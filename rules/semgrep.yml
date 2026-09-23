@@ -73,6 +73,68 @@ rules:
       huginn_sink: suspicious package behavior
       suspicious_package: true
 
+  - id: huginn.python.subprocess-shell-true
+    message: Python subprocess executes through a shell; review command provenance for injection.
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.check_call(..., shell=True, ...)
+      - pattern: subprocess.check_output(..., shell=True, ...)
+    metadata:
+      huginn_category: command_execution
+      huginn_confidence: MEDIUM
+      huginn_validation: sink_only
+      huginn_source_to_sink: false
+      huginn_source: shell command provenance must be established manually
+      huginn_sink: Python subprocess with shell=True
+      cwe: CWE-78
+      suspicious_package: false
+
+  - id: huginn.python.decrypted-pickle
+    message: Decrypted bytes are deserialized with pickle; verify the cryptographic peer and trust boundary.
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: pickle.loads($KEY.decrypt(...))
+      - pattern: pickle.loads($DEC.decrypt(...))
+    metadata:
+      huginn_category: unsafe_deserialization
+      huginn_confidence: MEDIUM
+      huginn_validation: sink_only
+      huginn_source_to_sink: false
+      huginn_source: decrypted remote or persisted data trust must be established manually
+      huginn_sink: pickle.loads on decrypted data
+      cwe: CWE-502
+      suspicious_package: false
+
+  - id: huginn.python.network-response-unsafe-deserialization
+    message: Network-derived Python data reaches an unsafe deserialization sink.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - pattern: requests.get(...)
+      - pattern: requests.post(...)
+      - pattern: requests.request(...)
+      - pattern: httpx.get(...)
+      - pattern: httpx.post(...)
+      - pattern: httpx.request(...)
+    pattern-sinks:
+      - pattern: pickle.loads(...)
+      - pattern: yaml.unsafe_load(...)
+    metadata:
+      huginn_category: unsafe_deserialization
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: network response
+      huginn_sink: unsafe deserialization
+      cwe: CWE-502
+      suspicious_package: false
+
   - id: huginn.python.tainted-eval
     message: Untrusted Python input reaches eval/exec.
     severity: ERROR
