@@ -25,3 +25,79 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m unittest discover -s tests -v
+
+  validation-controls:
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'feature/security-cve-enrichment' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      HUGINN_STATE_DB: /tmp/huginn-validation-state.db
+      HUGINN_TRIVY_IMAGE: docker.io/aquasec/trivy:0.74.0
+      HUGINN_SEMGREP_IMAGE: docker.io/semgrep/semgrep:1.177.0
+      HUGINN_UNPACK_IMAGE: docker.io/library/python:3.13-slim
+      HUGINN_TRIVY_CACHE_VOLUME: huginn-trivy-validation
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install rootless Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman info
+
+      - name: Install Huginn
+        run: python -m pip install .
+
+      - name: Prepare scanner databases
+        run: |
+          podman pull "$HUGINN_UNPACK_IMAGE"
+          podman pull "$HUGINN_TRIVY_IMAGE"
+          podman pull "$HUGINN_SEMGREP_IMAGE"
+          podman volume create "$HUGINN_TRIVY_CACHE_VOLUME"
+          podman run --rm \
+            -v "$HUGINN_TRIVY_CACHE_VOLUME:/root/.cache/trivy:rw" \
+            "$HUGINN_TRIVY_IMAGE" image --download-db-only
+
+      - name: Scan known-vulnerable validation controls
+        id: validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT_DIR="$(python -m huginn.capture \
+            --seed-only \
+            --seed npm:lodash:4.17.20 \
+            --seed npm:minimist:1.2.5 \
+            --seed pypi:jinja2:2.10.1 \
+            --output validation-reports)"
+          echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+          cat "$OUTPUT_DIR/run_summary.json"
+          python - <<'PY' "$OUTPUT_DIR/review_findings.csv"
+          import csv, sys
+          path = sys.argv[1]
+          with open(path, encoding="utf-8-sig", newline="") as f:
+              rows = list(csv.DictReader(f))
+          cves = sorted({
+              r["vulnerability_id"] for r in rows
+              if r.get("event_type") == "VALIDATION_SEED"
+              and r.get("dedup_status") == "KNOWN_EXACT"
+              and r.get("vulnerability_id", "").startswith("CVE-")
+          })
+          print("Validated control CVEs:", ", ".join(cves))
+          if len(cves) < 2:
+              raise SystemExit(f"expected at least 2 exact CVE validation controls, got {len(cves)}")
+          PY
+
+      - name: Upload validation review packet
+        uses: actions/upload-artifact@v4
+        with:
+          name: huginn-validation-${{ github.run_id }}
+          path: ${{ steps.validation.outputs.output_dir }}
+          retention-days: 30
+          if-no-files-found: error
