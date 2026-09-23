@@ -8,6 +8,12 @@ from .reporting import REVIEW_COLUMNS
 
 
 ALLOWED_STATUS = {"PENDING", "IN_REVIEW", "VALIDATED", "REJECTED", "KNOWN", "DEFERRED"}
+VALIDATABLE_STATES = {
+    "HIGH_VALUE_MANUAL_CANDIDATE",
+    "NEEDS_REACHABILITY_REVIEW",
+    "NEEDS_DUPLICATE_REVIEW",
+    "NEEDS_MANUAL_REVIEW",
+}
 BOOL = {"true", "false"}
 
 
@@ -36,6 +42,12 @@ def validate(path: Path) -> list[str]:
                     if not (row.get(col) or "").strip():
                         errors.append(f"line {line_no}: {col} required when review_status={status}")
             if status == "VALIDATED":
+                validation_state = (row.get("validation_state") or "").strip().upper()
+                if validation_state not in VALIDATABLE_STATES:
+                    errors.append(
+                        f"line {line_no}: validation_state={validation_state or '<blank>'} "
+                        "cannot be promoted to VALIDATED"
+                    )
                 for col in (
                     "reachability_verified", "security_boundary_verified",
                     "affected_version_verified", "known_advisory_verified",

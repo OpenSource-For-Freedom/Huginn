@@ -10,11 +10,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .advisory import AdvisoryClient, enrich_rows
-from .discovery import USER_AGENT, discover, resolve_artifact
+from .alerts import alerts_from_findings, alerts_from_manifests, make_alert
+from .discovery import USER_AGENT, discover, previous_release, resolve_artifact
 from .models import Artifact
-from .reporting import MANIFEST_COLUMNS, REVIEW_COLUMNS, normalize_semgrep, normalize_trivy, write_csv
+from .reporting import ALERT_COLUMNS, MANIFEST_COLUMNS, REVIEW_COLUMNS, normalize_semgrep, normalize_trivy, write_csv
 from .scanner import PodmanScanner
 from .state import StateDB
+from .validation import apply_validation
 
 
 DEFAULT_MAX_ARTIFACT = 100 * 1024 * 1024
@@ -75,8 +77,10 @@ def capture_registry(
             "package_name": candidate.name, "package_version": candidate.version, "purl": candidate.purl,
             "published_at_utc": candidate.published_at, "first_seen_at_utc": first_seen,
             "scan_status": "STARTED", "scan_started_at_utc": utc_now(), "scan_finished_at_utc": "",
-            "trivy_exit_code": "", "semgrep_exit_code": "", "finding_count": "0", "error": "",
+            "trivy_exit_code": "", "semgrep_exit_code": "", "finding_count": "0",
+            "failure_stage": "", "error": "",
         }
+        stage = "artifact_resolve"
         try:
             artifact = resolve_artifact(candidate)
             manifest.update({
@@ -88,10 +92,12 @@ def capture_registry(
             suffix = "".join(Path(artifact.filename).suffixes)[-20:] or ".bin"
             with tempfile.TemporaryDirectory(prefix="huginn-artifact-") as td:
                 artifact_path = Path(td) / f"package{suffix}"
+                stage = "artifact_download"
                 sha256, size = download(artifact, artifact_path, max_artifact_bytes)
                 manifest["artifact_sha256"] = sha256
                 manifest["artifact_size_bytes"] = str(size)
 
+                stage = "static_scan"
                 outcome = scanner.scan(artifact_path)
                 semgrep_version = str(outcome.semgrep.get("version") or "")
                 rows = normalize_trivy(
@@ -119,7 +125,49 @@ def capture_registry(
 
                 # Networked advisory lookups happen in the trusted controller after the
                 # untrusted no-network scanner has exited.
+                stage = "advisory_enrichment"
                 enrich_rows(rows, advisory, checked_at=utc_now())
+
+                previous_version = ""
+                previous_keys: set[tuple[str, str]] = set()
+                previous_status = "NOT_NEEDED"
+                previous_error = ""
+
+                semgrep_candidates = [
+                    row for row in rows
+                    if row.get("scanner") == "semgrep"
+                    and row.get("dedup_status") in {"NO_MATCH", "POSSIBLE_MATCH", "LOOKUP_FAILED"}
+                ]
+                if semgrep_candidates:
+                    try:
+                        stage = "previous_version_compare"
+                        previous = previous_release(candidate)
+                        if previous is None:
+                            previous_status = "UNAVAILABLE"
+                        else:
+                            previous_version = previous.version
+                            previous_artifact = resolve_artifact(previous)
+                            previous_suffix = "".join(Path(previous_artifact.filename).suffixes)[-20:] or ".bin"
+                            previous_path = Path(td) / f"previous{previous_suffix}"
+                            download(previous_artifact, previous_path, max_artifact_bytes)
+                            previous_outcome = scanner.scan(previous_path)
+                            previous_keys = {
+                                (str(item.get("check_id") or ""), str(item.get("path") or ""))
+                                for item in (previous_outcome.semgrep.get("results") or [])
+                            }
+                            previous_status = "COMPLETE"
+                    except Exception as exc:
+                        previous_status = "FAILED"
+                        previous_error = f"{type(exc).__name__}: {exc}"[:1000]
+
+                stage = "validation"
+                apply_validation(
+                    rows,
+                    previous_version=previous_version,
+                    previous_keys=previous_keys,
+                    previous_compare_status=previous_status,
+                    previous_compare_error=previous_error,
+                )
                 findings.extend(rows)
 
                 manifest["trivy_exit_code"] = str(outcome.trivy_exit_code)
@@ -130,6 +178,7 @@ def capture_registry(
 
         except Exception as exc:
             manifest["scan_status"] = "FAILED"
+            manifest["failure_stage"] = stage
             manifest["error"] = f"{type(exc).__name__}: {exc}"[:4000]
             state.mark_failed(candidate.registry, candidate.name, candidate.version, manifest["error"])
         finally:
@@ -177,20 +226,41 @@ def main() -> None:
 
     all_findings: list[dict] = []
     all_manifests: list[dict] = []
+    all_alerts: list[dict] = []
     for registry in registries:
-        findings, manifests = capture_registry(
-            registry,
-            args.mode,
-            args.limit,
-            state,
-            scanner,
-            advisory,
-            run,
-            started,
-            args.max_artifact_bytes,
-        )
+        try:
+            findings, manifests = capture_registry(
+                registry,
+                args.mode,
+                args.limit,
+                state,
+                scanner,
+                advisory,
+                run,
+                started,
+                args.max_artifact_bytes,
+            )
+        except Exception as exc:
+            all_alerts.append(
+                make_alert(
+                    run_id=run,
+                    registry=registry,
+                    stage="registry_discovery",
+                    alert_type="ECOSYSTEM_DISCOVERY_FAILURE",
+                    source=registry,
+                    message=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
+                    severity="CRITICAL",
+                    retryable=True,
+                    coverage_impact="ECOSYSTEM_NOT_ANALYZED",
+                    recommended_action="Retry registry discovery before treating the hunt as complete.",
+                )
+            )
+            continue
         all_findings.extend(findings)
         all_manifests.extend(manifests)
+        all_alerts.extend(alerts_from_manifests(run, manifests))
+        all_alerts.extend(alerts_from_findings(run, findings))
 
     all_findings.sort(
         key=lambda r: (
@@ -202,6 +272,7 @@ def main() -> None:
     )
     write_csv(out_dir / "review_findings.csv", REVIEW_COLUMNS, all_findings)
     write_csv(out_dir / "scan_manifest.csv", MANIFEST_COLUMNS, all_manifests)
+    write_csv(out_dir / "operational_alerts.csv", ALERT_COLUMNS, all_alerts)
 
     summary = {
         "run_id": run,
@@ -214,10 +285,26 @@ def main() -> None:
         "possible_match_count": sum(1 for row in all_findings if row.get("dedup_status") == "POSSIBLE_MATCH"),
         "known_exact_count": sum(1 for row in all_findings if row.get("dedup_status") == "KNOWN_EXACT"),
         "lookup_failed_count": sum(1 for row in all_findings if row.get("dedup_status") == "LOOKUP_FAILED"),
+        "high_value_manual_candidate_count": sum(
+            1 for row in all_findings if row.get("validation_state") == "HIGH_VALUE_MANUAL_CANDIDATE"
+        ),
+        "needs_reachability_review_count": sum(
+            1 for row in all_findings if row.get("validation_state") == "NEEDS_REACHABILITY_REVIEW"
+        ),
+        "noise_likely_count": sum(
+            1 for row in all_findings if row.get("validation_state") == "NOISE_LIKELY"
+        ),
+        "static_dataflow_count": sum(
+            1 for row in all_findings if row.get("reachability_state") == "STATIC_DATAFLOW"
+        ),
         "package_scan_count": len(all_manifests),
         "failed_package_scans": sum(1 for row in all_manifests if row.get("scan_status") == "FAILED"),
+        "operational_alert_count": len(all_alerts),
+        "critical_coverage_alert_count": sum(1 for row in all_alerts if row.get("severity") == "CRITICAL"),
+        "high_coverage_alert_count": sum(1 for row in all_alerts if row.get("severity") == "HIGH"),
         "review_csv": "review_findings.csv",
         "manifest_csv": "scan_manifest.csv",
+        "operational_alerts_csv": "operational_alerts.csv",
         "automatic_disclosure": False,
         "automatic_cve_submission": False,
     }

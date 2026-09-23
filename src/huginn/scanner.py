@@ -112,7 +112,7 @@ class PodmanScanner:
                 "-v", f"{scan_cache}:/root/.cache/trivy:rw",
                 self.trivy_image,
                 "--cache-dir", "/root/.cache/trivy",
-                "fs", "--skip-db-update", "--format", "json", "--scanners", "vuln,misconfig", "/scan/src",
+                "fs", "--skip-db-update", "--format", "json", "--scanners", "vuln,misconfig,secret", "/scan/src",
             ]
             trivy = self._run(trivy_cmd)
 
@@ -133,6 +133,51 @@ class PodmanScanner:
             semgrep_payload = json.loads(semgrep.stdout or "{}")
             semgrep_results = semgrep_payload.get("results") or []
             semgrep_errors = semgrep_payload.get("errors") or []
+
+            if semgrep_results:
+                requests = [
+                    {
+                        "index": index,
+                        "path": str(item.get("path") or ""),
+                        "start": int((item.get("start") or {}).get("line") or 1),
+                        "end": int((item.get("end") or {}).get("line") or (item.get("start") or {}).get("line") or 1),
+                    }
+                    for index, item in enumerate(semgrep_results[:2000])
+                ]
+                excerpt_script = (
+                    "import json,os; from pathlib import Path; "
+                    "root=Path('/scan/src').resolve(); out={}; "
+                    "items=json.loads(os.environ.get('HUGINN_FINDINGS','[]')); "
+                    "\nfor item in items:\n"
+                    " p=Path(item['path']); "
+                    " p=(root / p) if not p.is_absolute() else p; "
+                    " p=p.resolve(); "
+                    "\n try: p.relative_to(root)\n"
+                    " except ValueError: continue\n"
+                    " try: lines=p.read_text(encoding='utf-8',errors='replace').splitlines()\n"
+                    " except Exception: continue\n"
+                    " start=max(1,int(item['start'])); end=max(start,int(item['end'])); "
+                    " lo=max(1,start-2); hi=min(len(lines),end+2); "
+                    " excerpt='\\n'.join(f'{n}: {lines[n-1]}' for n in range(lo,hi+1)); "
+                    " out[str(item['index'])]={'excerpt':excerpt,'start':lo,'end':hi}\n"
+                    "print(json.dumps(out,ensure_ascii=False))"
+                )
+                excerpt_cmd = [
+                    "podman", "run", "--rm", *self._base_security(),
+                    "-v", f"{source_volume}:/scan:ro",
+                    "-e", f"HUGINN_FINDINGS={json.dumps(requests, separators=(',', ':'))}",
+                    self.unpack_image,
+                    "python", "-c", excerpt_script,
+                ]
+                excerpt_result = self._run(excerpt_cmd)
+                excerpts = json.loads(excerpt_result.stdout or "{}")
+                for index, item in enumerate(semgrep_results):
+                    detail = excerpts.get(str(index)) or {}
+                    if detail.get("excerpt"):
+                        extra = item.setdefault("extra", {})
+                        extra["huginn_excerpt"] = detail["excerpt"]
+                        extra["huginn_excerpt_start"] = detail.get("start")
+                        extra["huginn_excerpt_end"] = detail.get("end")
             if semgrep.returncode != 0 and not semgrep_results:
                 detail = json.dumps(semgrep_errors[:5], ensure_ascii=False)[:2000]
                 raise ScanError(

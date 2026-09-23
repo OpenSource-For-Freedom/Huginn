@@ -19,6 +19,7 @@ PYPI_NEW = "https://pypi.org/rss/packages.xml"
 RUBYGEMS_UPDATED = "https://rubygems.org/api/v1/activity/just_updated.json"
 RUBYGEMS_NEW = "https://rubygems.org/api/v1/activity/latest.json"
 NPM_REPLICA = "https://replicate.npmjs.com"
+NPM_CHANGES = "https://replicate.npmjs.com/registry/_changes"
 NPM_REGISTRY = "https://registry.npmjs.org"
 
 
@@ -237,13 +238,63 @@ def discover_npm(mode: str, limit: int, state: StateDB) -> DiscoveryBatch:
         update_seq = str(meta.get("update_seq") or "")
         if not update_seq:
             raise DiscoveryError("npm replication endpoint did not return update_seq")
+
+        bootstrap_limit = max(limit * 10, 250)
+        query = urllib.parse.urlencode({"descending": "true", "limit": bootstrap_limit})
+        changes = _json(f"{NPM_CHANGES}?{query}")
+        threshold = datetime.now(UTC) - timedelta(hours=24)
+        candidates: list[ReleaseCandidate] = []
+        seen: set[tuple[str, str]] = set()
+
+        for change in changes.get("results") or []:
+            package_name = str(change.get("id") or "")
+            if not package_name or package_name.startswith("_"):
+                continue
+            try:
+                packument = _npm_packument(package_name)
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    continue
+                raise
+
+            first_version = _first_npm_version(packument)
+            for version, published_raw in (packument.get("time") or {}).items():
+                if version in {"created", "modified"} or not isinstance(published_raw, str):
+                    continue
+                published = _parse_iso(published_raw)
+                if published < threshold:
+                    continue
+                event_type = "NEW_PACKAGE" if version == first_version else "NEW_VERSION"
+                if mode == "new" and event_type != "NEW_PACKAGE":
+                    continue
+                if mode == "updates" and event_type != "NEW_VERSION":
+                    continue
+                key = (package_name, version)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(
+                    ReleaseCandidate(
+                        registry="npm",
+                        name=package_name,
+                        version=version,
+                        event_type=event_type,
+                        published_at=published_raw,
+                        source_url=f"https://www.npmjs.com/package/{urllib.parse.quote(package_name, safe='@/')}",
+                    )
+                )
+                if len(candidates) >= limit:
+                    break
+            if len(candidates) >= limit:
+                break
+
         return DiscoveryBatch(
-            candidates=[],
+            candidates=candidates,
             checkpoint={"npm.sequence": update_seq, "npm.publish_window": _utc_now()},
         )
 
     query = urllib.parse.urlencode({"since": cursor, "limit": max(limit * 4, 50)})
-    changes = _json(f"{NPM_REPLICA}/_changes?{query}")
+    changes = _json(f"{NPM_CHANGES}?{query}")
     results = changes.get("results") or []
     last_seq = str(changes.get("last_seq") or cursor)
 
@@ -329,6 +380,63 @@ def discover(registry: str, mode: str, limit: int, state: StateDB | None = None)
         return discover_npm(mode, limit, state)
     raise DiscoveryError(f"Registry adapter not enabled: {registry}")
 
+
+
+def previous_release(candidate: ReleaseCandidate) -> ReleaseCandidate | None:
+    """Return the immediately preceding published version for static comparison."""
+    if candidate.event_type == "NEW_PACKAGE":
+        return None
+
+    versions: list[tuple[datetime, str, str]] = []
+
+    if candidate.registry == "npm":
+        packument = _npm_packument(candidate.name)
+        for version, timestamp in (packument.get("time") or {}).items():
+            if version in {"created", "modified"} or not isinstance(timestamp, str):
+                continue
+            versions.append((_parse_iso(timestamp), str(version), timestamp))
+
+    elif candidate.registry == "pypi":
+        meta = pypi_project_json(candidate.name)
+        for version, files in (meta.get("releases") or {}).items():
+            timestamps = [
+                str(item.get("upload_time_iso_8601") or item.get("upload_time") or "")
+                for item in (files or [])
+            ]
+            timestamps = [value for value in timestamps if value]
+            if timestamps:
+                earliest = min(timestamps, key=_parse_iso)
+                versions.append((_parse_iso(earliest), str(version), earliest))
+
+    elif candidate.registry == "rubygems":
+        encoded = urllib.parse.quote(candidate.name, safe="")
+        payload = json.loads(_request(f"https://rubygems.org/api/v1/versions/{encoded}.json"))
+        for item in payload:
+            version = str(item.get("number") or "")
+            created = str(item.get("created_at") or item.get("built_at") or "")
+            if version and created:
+                versions.append((_parse_iso(created), version, created))
+
+    else:
+        return None
+
+    current = next((entry for entry in versions if entry[1] == candidate.version), None)
+    if current is None:
+        return None
+
+    earlier = [entry for entry in versions if entry[0] < current[0] and entry[1] != candidate.version]
+    if not earlier:
+        return None
+
+    _, version, published = max(earlier, key=lambda entry: entry[0])
+    return ReleaseCandidate(
+        registry=candidate.registry,
+        name=candidate.name,
+        version=version,
+        event_type="PREVIOUS_VERSION",
+        published_at=published,
+        source_url=candidate.source_url,
+    )
 
 def resolve_artifact(candidate: ReleaseCandidate) -> Artifact:
     if candidate.registry == "pypi":

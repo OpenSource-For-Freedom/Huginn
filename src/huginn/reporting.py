@@ -16,11 +16,14 @@ REVIEW_COLUMNS = [
     "scanner", "scanner_version", "rule_id", "ruleset_hash", "finding_class", "vulnerability_id", "advisory_source",
     "advisory_url", "severity", "confidence", "novelty_state", "cvss_score", "cvss_vector", "cwe",
     "file_path", "start_line", "end_line", "dependency_ecosystem", "dependency_name", "installed_version", "fixed_version",
-    "title", "message", "evidence", "source", "sink", "known_dependency", "suspicious_package",
+    "title", "message", "evidence", "evidence_source", "source", "sink", "known_dependency", "suspicious_package",
     "dedup_status", "dedup_sources", "dedup_identifiers", "dedup_checked_at_utc",
     "dedup_match_basis", "enrichment_status", "enrichment_error",
     "osv_status", "osv_ids", "ghsa_status", "ghsa_ids", "nvd_status", "nvd_ids",
     "redhat_status", "redhat_ids", "advisory_cves", "advisory_cwes",
+    "validation_kind", "source_to_sink", "validation_state", "validation_score", "validation_reasons",
+    "reachability_state", "reachability_basis", "shipped_code_assessment", "analyst_queue",
+    "previous_version", "previous_compare_status", "previous_compare_error", "previous_finding_present", "version_delta",
     "review_status", "reviewer", "reviewer_decision", "reviewer_notes", "reachability_verified",
     "security_boundary_verified", "affected_version_verified", "known_advisory_verified", "false_positive_reason",
     "verified_at_utc", "disclosure_status", "disclosure_reference",
@@ -29,7 +32,14 @@ REVIEW_COLUMNS = [
 MANIFEST_COLUMNS = [
     "run_id", "registry", "event_type", "package_name", "package_version", "purl", "published_at_utc", "first_seen_at_utc",
     "artifact_filename", "artifact_url", "artifact_sha256", "artifact_size_bytes", "registry_digest", "scan_status",
-    "scan_started_at_utc", "scan_finished_at_utc", "trivy_exit_code", "semgrep_exit_code", "finding_count", "error",
+    "scan_started_at_utc", "scan_finished_at_utc", "trivy_exit_code", "semgrep_exit_code", "finding_count",
+    "failure_stage", "error",
+]
+
+ALERT_COLUMNS = [
+    "run_id", "detected_at_utc", "alert_id", "severity", "registry", "package_name", "package_version",
+    "stage", "alert_type", "source", "endpoint", "message", "error_type", "retryable",
+    "coverage_impact", "affected_findings", "recommended_action", "status",
 ]
 
 
@@ -39,6 +49,12 @@ def _flat(value: Any) -> str:
     if isinstance(value, (dict, list)):
         value = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return str(value).replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
+
+
+def _csv_safe(value: str) -> str:
+    if value and value[0] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
 
 
 def _fingerprint(*parts: Any) -> str:
@@ -79,6 +95,20 @@ def _base(run_id: str, run_started: str, candidate: ReleaseCandidate, artifact: 
         "known_advisory_verified": "",
         "false_positive_reason": "",
         "verified_at_utc": "",
+        "validation_kind": "",
+        "source_to_sink": "",
+        "validation_state": "UNVALIDATED",
+        "validation_score": "0",
+        "validation_reasons": "",
+        "reachability_state": "UNKNOWN",
+        "reachability_basis": "",
+        "shipped_code_assessment": "UNKNOWN",
+        "analyst_queue": "UNCLASSIFIED",
+        "previous_version": "",
+        "previous_compare_status": "NOT_RUN",
+        "previous_compare_error": "",
+        "previous_finding_present": "",
+        "version_delta": "UNKNOWN",
         "disclosure_status": "NOT_READY",
         "disclosure_reference": "",
     }
@@ -154,6 +184,53 @@ def normalize_trivy(payload: dict[str, Any], *, run_id: str, run_started: str, c
             row["triage_priority"] = _priority(severity, "HIGH", "known")
             rows.append(row)
 
+        for secret in result.get("Secrets") or []:
+            severity = _flat(secret.get("Severity") or "HIGH")
+            rule = _flat(secret.get("RuleID") or "trivy-secret")
+            row = _base(run_id, run_started, candidate, artifact, sha256, first_seen)
+            row.update({
+                "scanner": "trivy",
+                "scanner_version": scanner_version,
+                "rule_id": rule,
+                "ruleset_hash": "",
+                "finding_class": "secret_exposure",
+                "vulnerability_id": "",
+                "advisory_source": "",
+                "advisory_url": "",
+                "severity": severity,
+                "confidence": "HIGH",
+                "novelty_state": "unreviewed",
+                "cvss_score": "",
+                "cvss_vector": "",
+                "cwe": "CWE-798",
+                "file_path": target,
+                "start_line": _flat(secret.get("StartLine")),
+                "end_line": _flat(secret.get("EndLine")),
+                "dependency_ecosystem": "",
+                "dependency_name": "",
+                "installed_version": "",
+                "fixed_version": "",
+                "title": _flat(secret.get("Title") or secret.get("Category") or rule),
+                "message": "Potential hard-coded credential or secret in shipped artifact.",
+                "evidence": (
+                    "secret_match_sha256="
+                    + hashlib.sha256(str(secret.get("Match") or "").encode("utf-8", "replace")).hexdigest()
+                ),
+                "source": "static secret detection",
+                "sink": _flat(secret.get("Category") or "credential material"),
+                "known_dependency": "false",
+                "suspicious_package": "false",
+                "dedup_status": "NOT_APPLICABLE",
+                "dedup_sources": "",
+                "dedup_identifiers": "",
+                "dedup_checked_at_utc": "",
+            })
+            fp = _fingerprint(candidate.registry, candidate.name, candidate.version, "trivy-secret", rule, target, row["start_line"])
+            row["finding_fingerprint"] = fp
+            row["finding_id"] = fp[:20]
+            row["triage_priority"] = _priority(severity, "HIGH", "unreviewed")
+            rows.append(row)
+
         for mis in result.get("Misconfigurations") or []:
             severity = _flat(mis.get("Severity") or "UNKNOWN")
             rule = _flat(mis.get("ID"))
@@ -215,6 +292,20 @@ def normalize_semgrep(payload: dict[str, Any], *, run_id: str, run_started: str,
         rule = _flat(finding.get("check_id"))
         category = _flat(metadata.get("huginn_category") or metadata.get("category") or "static_pattern")
         suspicious = str(metadata.get("suspicious_package", False)).lower()
+        validation_kind = _flat(metadata.get("huginn_validation") or "sink_only")
+        source_to_sink = str(metadata.get("huginn_source_to_sink", False)).lower()
+        semgrep_lines = _flat(extra.get("lines") or "")
+        if semgrep_lines.strip().lower() == "requires login":
+            semgrep_lines = ""
+        excerpt = _flat(extra.get("huginn_excerpt") or "")
+        metavars = _flat(extra.get("metavars") or "")
+        evidence = excerpt or semgrep_lines or metavars
+        evidence_source = (
+            "isolated_static_excerpt" if excerpt
+            else "semgrep_lines" if semgrep_lines
+            else "metavars" if metavars
+            else "unavailable"
+        )
         row = _base(run_id, run_started, candidate, artifact, sha256, first_seen)
         row.update({
             "scanner": "semgrep",
@@ -240,11 +331,14 @@ def normalize_semgrep(payload: dict[str, Any], *, run_id: str, run_started: str,
             "fixed_version": "",
             "title": _flat(metadata.get("shortlink") or rule),
             "message": _flat(extra.get("message")),
-            "evidence": _flat(extra.get("lines") or extra.get("metavars") or ""),
+            "evidence": evidence,
+            "evidence_source": evidence_source,
             "source": _flat(metadata.get("huginn_source") or "manual inspection required"),
             "sink": _flat(metadata.get("huginn_sink") or category),
             "known_dependency": "false",
             "suspicious_package": suspicious,
+            "validation_kind": validation_kind,
+            "source_to_sink": source_to_sink,
             "dedup_status": "NOT_CHECKED",
             "dedup_sources": "",
             "dedup_identifiers": "",
@@ -264,4 +358,4 @@ def write_csv(path: Path, columns: list[str], rows: Iterable[dict[str, Any]]) ->
         writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore", quoting=csv.QUOTE_MINIMAL)
         writer.writeheader()
         for row in rows:
-            writer.writerow({k: _flat(row.get(k, "")) for k in columns})
+            writer.writerow({k: _csv_safe(_flat(row.get(k, ""))) for k in columns})

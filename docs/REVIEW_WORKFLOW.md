@@ -189,3 +189,25 @@ Trivy receives a disposable copy of the trusted vulnerability database for each 
 9. Tune high-noise rules before setting `HUGINN_SCHEDULE_ENABLED=true`.
 
 No automatic CVE request or disclosure is part of this stage.
+
+
+## Security weakness and coverage-alert scope
+
+Huginn's static hunt now treats these as separate evidence classes:
+
+- memory safety: unsafe C/C++ buffer operations and allocation arithmetic;
+- resource exhaustion / denial of service, including attacker-controlled allocation and regex patterns;
+- command execution and dynamic evaluation;
+- unsafe deserialization;
+- SSRF;
+- path traversal / attacker-controlled filesystem access;
+- SQL injection;
+- XSS;
+- hard-coded secret exposure through Trivy secret scanning;
+- suspicious-package indicators.
+
+A static match is still only a candidate until reachability, security boundary, affected version, and impact are verified.
+
+Operational failures are not CVEs. They are emitted to `operational_alerts.csv` because they can create a blind spot in the hunt. Alerted conditions include registry discovery failures, package/artifact scan failures, advisory API retrieval failures, and failed adjacent-version comparisons.
+
+A critical ecosystem coverage failure or failed package scan makes that matrix leg fail after its review packet is written. High-severity partial advisory failures remain visible as workflow warnings and in the operational alert CSV.
