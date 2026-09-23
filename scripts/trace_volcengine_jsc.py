@@ -20,7 +20,7 @@ FILES=[
  {"suffix":"bytedance/jeddak_secure_channel/config.py","start":1,"end":260},
  {"suffix":"bytedance/jeddak_secure_channel/crypto/envelope.py","start":1,"end":310},
  {"suffix":"bytedance/jeddak_secure_channel/crypto/aes.py","start":1,"end":220},
- {"suffix":"bytedance/jeddak_secure_channel/ra.py","start":190,"end":430},
+ {"suffix":"bytedance/jeddak_secure_channel/ra.py","start":190,"end":850},
 ]
 
 
