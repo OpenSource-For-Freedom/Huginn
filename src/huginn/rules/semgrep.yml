@@ -7,6 +7,8 @@ rules:
     metadata:
       huginn_category: dynamic_code_execution
       huginn_confidence: LOW
+      huginn_validation: sink_only
+      huginn_source_to_sink: false
       huginn_source: attacker-controlled input must be established manually
       huginn_sink: dynamic evaluation
       cwe: CWE-95
@@ -20,6 +22,8 @@ rules:
     metadata:
       huginn_category: command_execution
       huginn_confidence: MEDIUM
+      huginn_validation: sink_only
+      huginn_source_to_sink: false
       huginn_source: attacker-controlled argument must be established manually
       huginn_sink: operating-system command execution
       cwe: CWE-78
@@ -33,6 +37,8 @@ rules:
     metadata:
       huginn_category: unsafe_deserialization
       huginn_confidence: MEDIUM
+      huginn_validation: sink_only
+      huginn_source_to_sink: false
       huginn_source: serialized input origin must be established manually
       huginn_sink: deserialization primitive
       cwe: CWE-502
@@ -46,6 +52,8 @@ rules:
     metadata:
       huginn_category: xss_sink
       huginn_confidence: LOW
+      huginn_validation: sink_only
+      huginn_source_to_sink: false
       huginn_source: untrusted web input must be established manually
       huginn_sink: HTML/DOM rendering sink
       cwe: CWE-79
@@ -59,6 +67,136 @@ rules:
     metadata:
       huginn_category: reverse_shell_indicator
       huginn_confidence: MEDIUM
+      huginn_validation: indicator
+      huginn_source_to_sink: false
       huginn_source: static indicator only
       huginn_sink: suspicious package behavior
       suspicious_package: true
+
+  - id: huginn.python.tainted-eval
+    message: Untrusted Python input reaches eval/exec.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - pattern: input(...)
+      - pattern: flask.request.args.get(...)
+      - pattern: flask.request.form.get(...)
+      - pattern: flask.request.get_json(...)
+      - pattern: request.args.get(...)
+      - pattern: request.form.get(...)
+      - pattern: request.get_json(...)
+      - pattern: $REQ.query_params.get(...)
+    pattern-sinks:
+      - pattern: eval(...)
+      - pattern: exec(...)
+    metadata:
+      huginn_category: dynamic_code_execution
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted request or interactive input
+      huginn_sink: eval/exec
+      cwe: CWE-95
+      suspicious_package: false
+
+  - id: huginn.python.tainted-command-execution
+    message: Untrusted Python input reaches an operating-system command execution sink.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - pattern: input(...)
+      - pattern: flask.request.args.get(...)
+      - pattern: flask.request.form.get(...)
+      - pattern: flask.request.get_json(...)
+      - pattern: request.args.get(...)
+      - pattern: request.form.get(...)
+      - pattern: request.get_json(...)
+      - pattern: $REQ.query_params.get(...)
+    pattern-sinks:
+      - pattern: os.system(...)
+      - pattern: subprocess.run(...)
+      - pattern: subprocess.Popen(...)
+      - pattern: subprocess.call(...)
+    metadata:
+      huginn_category: command_execution
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted request or interactive input
+      huginn_sink: operating-system command execution
+      cwe: CWE-78
+      suspicious_package: false
+
+  - id: huginn.python.tainted-unsafe-deserialization
+    message: Untrusted Python input reaches an unsafe deserialization sink.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - pattern: input(...)
+      - pattern: flask.request.data
+      - pattern: flask.request.get_data(...)
+      - pattern: request.data
+      - pattern: request.get_data(...)
+      - pattern: $REQ.body(...)
+    pattern-sinks:
+      - pattern: pickle.loads(...)
+      - pattern: yaml.unsafe_load(...)
+    metadata:
+      huginn_category: unsafe_deserialization
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted request or interactive input
+      huginn_sink: unsafe deserialization
+      cwe: CWE-502
+      suspicious_package: false
+
+  - id: huginn.javascript.tainted-command-execution
+    message: Untrusted JavaScript request or process input reaches child process execution.
+    severity: ERROR
+    languages: [javascript, typescript]
+    mode: taint
+    pattern-sources:
+      - pattern: $REQ.query.$X
+      - pattern: $REQ.body.$X
+      - pattern: $REQ.params.$X
+      - pattern: process.argv[$X]
+    pattern-sinks:
+      - pattern: child_process.exec(...)
+      - pattern: child_process.execSync(...)
+      - pattern: $CP.exec(...)
+      - pattern: $CP.execSync(...)
+    metadata:
+      huginn_category: command_execution
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted request or process argument
+      huginn_sink: child process execution
+      cwe: CWE-78
+      suspicious_package: false
+
+  - id: huginn.javascript.tainted-xss
+    message: Untrusted JavaScript request input reaches an HTML rendering sink.
+    severity: WARNING
+    languages: [javascript, typescript]
+    mode: taint
+    pattern-sources:
+      - pattern: $REQ.query.$X
+      - pattern: $REQ.body.$X
+      - pattern: $REQ.params.$X
+    pattern-sinks:
+      - pattern: $EL.innerHTML = $X
+      - pattern: document.write(...)
+    metadata:
+      huginn_category: xss_sink
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted request input
+      huginn_sink: HTML/DOM rendering sink
+      cwe: CWE-79
+      suspicious_package: false
