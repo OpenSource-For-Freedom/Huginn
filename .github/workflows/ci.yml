@@ -115,3 +115,85 @@ jobs:
           path: ${{ steps.validation.outputs.output_dir }}
           retention-days: 30
           if-no-files-found: error
+
+
+  live-recent-canary:
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'feature/security-cve-enrichment' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HUGINN_STATE_DB: /tmp/huginn-live-state.db
+      HUGINN_TRIVY_IMAGE: docker.io/aquasec/trivy:0.74.0
+      HUGINN_SEMGREP_IMAGE: docker.io/semgrep/semgrep:1.177.0
+      HUGINN_UNPACK_IMAGE: docker.io/library/python:3.13-slim
+      HUGINN_TRIVY_CACHE_VOLUME: huginn-trivy-live
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          disable-telemetry: true
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install rootless Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
+      - name: Install Huginn
+        run: python -m pip install .
+
+      - name: Prepare scanner databases
+        run: |
+          podman pull "$HUGINN_UNPACK_IMAGE"
+          podman pull "$HUGINN_TRIVY_IMAGE"
+          podman pull "$HUGINN_SEMGREP_IMAGE"
+          podman volume create "$HUGINN_TRIVY_CACHE_VOLUME"
+          podman run --rm \
+            -v "$HUGINN_TRIVY_CACHE_VOLUME:/root/.cache/trivy:rw" \
+            "$HUGINN_TRIVY_IMAGE" image --download-db-only
+
+      - name: Scan current registry releases
+        id: live
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT_DIR="$(python -m huginn.capture \
+            --registry all \
+            --mode updates \
+            --limit 3 \
+            --max-jobs 6 \
+            --output live-reports)"
+          echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+          cat "$OUTPUT_DIR/run_summary.json"
+          cat "$OUTPUT_DIR/scan_manifest.csv"
+          python - <<'PY' "$OUTPUT_DIR/review_findings.csv"
+          import csv, sys
+          with open(sys.argv[1], encoding="utf-8-sig", newline="") as f:
+              rows = list(csv.DictReader(f))
+          cves = sorted({
+              r["vulnerability_id"] for r in rows
+              if r.get("dedup_status") == "KNOWN_EXACT"
+              and r.get("vulnerability_id", "").startswith("CVE-")
+          })
+          novel = [r for r in rows if r.get("dedup_status") == "NO_MATCH"]
+          print("Live exact CVEs:", ", ".join(cves) if cves else "(none in this sample)")
+          print("Live NO_MATCH candidates:", len(novel))
+          PY
+
+      - name: Upload live review packet
+        if: always() && steps.live.outputs.output_dir != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: huginn-live-${{ github.run_id }}
+          path: ${{ steps.live.outputs.output_dir }}
+          retention-days: 30
+          if-no-files-found: error
