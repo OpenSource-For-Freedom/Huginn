@@ -66,7 +66,9 @@ def apply_validation(
             row["reachability_basis"] = "known dependency advisory"
             row["shipped_code_assessment"] = "DEPENDENCY"
             row["analyst_queue"] = "KNOWN"
-            row["previous_version"] = previous_version
+            row["previous_version"] = ""
+            row["previous_compare_status"] = "NOT_NEEDED"
+            row["previous_compare_error"] = ""
             row["previous_finding_present"] = ""
             row["version_delta"] = "NOT_APPLICABLE"
             continue
@@ -79,7 +81,9 @@ def apply_validation(
             row["reachability_basis"] = "suspicious-package rule"
             row["shipped_code_assessment"] = "REQUIRES_REVIEW"
             row["analyst_queue"] = "SUSPICIOUS"
-            row["previous_version"] = previous_version
+            row["previous_version"] = ""
+            row["previous_compare_status"] = "NOT_NEEDED"
+            row["previous_compare_error"] = ""
             row["previous_finding_present"] = ""
             row["version_delta"] = "UNKNOWN"
             continue
@@ -120,7 +124,11 @@ def apply_validation(
 
             key = (rule_id, path)
             row["previous_version"] = previous_version
-            if previous_version:
+            if previous_compare_status == "FAILED":
+                row["previous_finding_present"] = ""
+                row["version_delta"] = "UNKNOWN"
+                reasons.append("previous_version_comparison_failed")
+            elif previous_version:
                 if key in previous_keys:
                     row["previous_finding_present"] = "true"
                     row["version_delta"] = "PRESENT_IN_PREVIOUS"
