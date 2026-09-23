@@ -11,3 +11,17 @@ Owner: **OpenSource-For-Freedom**
 ## Project requirements
 
 See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the Planning, Architecture, Design, Security, and recommended technology stack requirements.
+
+## Review-first CVE capture
+
+The first runnable capture pipeline is in src/huginn and .github/workflows/cve-capture.yml.
+
+It currently watches PyPI and RubyGems release feeds, downloads published artifacts as opaque bytes, unpacks and scans them in rootless no-network Podman containers, and emits a private review packet on every run:
+
+- review_findings.csv — every Trivy CVE/misconfiguration and Semgrep candidate with inline analyst-verification columns.
+- scan_manifest.csv — every package attempted, including scan failures and finding counts.
+- run_summary.json — run-level totals and automation state.
+
+Manual workflow runs are enabled first. The hourly schedule remains gated until the private repository variable HUGINN_SCHEDULE_ENABLED is set to true.
+
+See docs/REVIEW_WORKFLOW.md for the complete CSV inspection contract and validation requirements.
