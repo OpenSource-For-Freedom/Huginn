@@ -19,6 +19,7 @@ PYPI_NEW = "https://pypi.org/rss/packages.xml"
 RUBYGEMS_UPDATED = "https://rubygems.org/api/v1/activity/just_updated.json"
 RUBYGEMS_NEW = "https://rubygems.org/api/v1/activity/latest.json"
 NPM_REPLICA = "https://replicate.npmjs.com"
+NPM_CHANGES = "https://replicate.npmjs.com/registry/_changes"
 NPM_REGISTRY = "https://registry.npmjs.org"
 
 
@@ -237,13 +238,63 @@ def discover_npm(mode: str, limit: int, state: StateDB) -> DiscoveryBatch:
         update_seq = str(meta.get("update_seq") or "")
         if not update_seq:
             raise DiscoveryError("npm replication endpoint did not return update_seq")
+
+        bootstrap_limit = max(limit * 10, 250)
+        query = urllib.parse.urlencode({"descending": "true", "limit": bootstrap_limit})
+        changes = _json(f"{NPM_CHANGES}?{query}")
+        threshold = datetime.now(UTC) - timedelta(hours=24)
+        candidates: list[ReleaseCandidate] = []
+        seen: set[tuple[str, str]] = set()
+
+        for change in changes.get("results") or []:
+            package_name = str(change.get("id") or "")
+            if not package_name or package_name.startswith("_"):
+                continue
+            try:
+                packument = _npm_packument(package_name)
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    continue
+                raise
+
+            first_version = _first_npm_version(packument)
+            for version, published_raw in (packument.get("time") or {}).items():
+                if version in {"created", "modified"} or not isinstance(published_raw, str):
+                    continue
+                published = _parse_iso(published_raw)
+                if published < threshold:
+                    continue
+                event_type = "NEW_PACKAGE" if version == first_version else "NEW_VERSION"
+                if mode == "new" and event_type != "NEW_PACKAGE":
+                    continue
+                if mode == "updates" and event_type != "NEW_VERSION":
+                    continue
+                key = (package_name, version)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(
+                    ReleaseCandidate(
+                        registry="npm",
+                        name=package_name,
+                        version=version,
+                        event_type=event_type,
+                        published_at=published_raw,
+                        source_url=f"https://www.npmjs.com/package/{urllib.parse.quote(package_name, safe='@/')}",
+                    )
+                )
+                if len(candidates) >= limit:
+                    break
+            if len(candidates) >= limit:
+                break
+
         return DiscoveryBatch(
-            candidates=[],
+            candidates=candidates,
             checkpoint={"npm.sequence": update_seq, "npm.publish_window": _utc_now()},
         )
 
     query = urllib.parse.urlencode({"since": cursor, "limit": max(limit * 4, 50)})
-    changes = _json(f"{NPM_REPLICA}/_changes?{query}")
+    changes = _json(f"{NPM_CHANGES}?{query}")
     results = changes.get("results") or []
     last_seq = str(changes.get("last_seq") or cursor)
 
