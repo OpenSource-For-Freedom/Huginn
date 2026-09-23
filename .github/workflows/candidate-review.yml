@@ -64,6 +64,9 @@ jobs:
       - name: Trace candidate source boundaries
         run: python scripts/trace_hunt002_candidates.py
 
+      - name: Trace candidate input provenance
+        run: python scripts/provenance_hunt002_candidates.py
+
       - name: Upload candidate review packet
         uses: actions/upload-artifact@v4
         with:
