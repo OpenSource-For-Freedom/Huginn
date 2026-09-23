@@ -78,6 +78,7 @@ jobs:
             --output validation-reports)"
           echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
           cat "$OUTPUT_DIR/run_summary.json"
+          cat "$OUTPUT_DIR/scan_manifest.csv"
           python - <<'PY' "$OUTPUT_DIR/review_findings.csv"
           import csv, sys
           path = sys.argv[1]
@@ -95,6 +96,7 @@ jobs:
           PY
 
       - name: Upload validation review packet
+        if: always() && steps.validation.outputs.output_dir != ''
         uses: actions/upload-artifact@v4
         with:
           name: huginn-validation-${{ github.run_id }}
