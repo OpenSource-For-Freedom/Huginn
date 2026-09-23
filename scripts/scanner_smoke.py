@@ -37,6 +37,10 @@ def main() -> None:
             str(item.get("check_id") or "")
             for item in outcome.semgrep.get("results") or []
         }
+        excerpts = [
+            str((item.get("extra") or {}).get("huginn_excerpt") or "")
+            for item in outcome.semgrep.get("results") or []
+        ]
         trivy_ids = {
             str(vuln.get("VulnerabilityID") or "")
             for result in outcome.trivy.get("Results") or []
@@ -52,6 +56,7 @@ def main() -> None:
             "semgrep_result_count": len(outcome.semgrep.get("results") or []),
             "semgrep_error_count": len(outcome.semgrep.get("errors") or []),
             "semgrep_rule_ids": sorted(semgrep_ids),
+            "static_excerpt_count": sum(1 for value in excerpts if value),
             "trivy_exit_code": outcome.trivy_exit_code,
             "trivy_vulnerability_ids": sorted(trivy_ids),
             "expected_semgrep_rule": expected_rule,
@@ -70,6 +75,10 @@ def main() -> None:
         ):
             raise SystemExit(
                 f"Semgrep failed to detect {expected_taint_rule}; got {sorted(semgrep_ids)}"
+            )
+        if not any("os.system(user_input)" in value for value in excerpts):
+            raise SystemExit(
+                "Scanner failed to attach isolated static source excerpts to Semgrep findings"
             )
         if expected_cve not in trivy_ids:
             raise SystemExit(
