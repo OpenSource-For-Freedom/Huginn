@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import urllib.error
@@ -242,8 +243,12 @@ def advisory_rows(bundle: dict[str, Any], *, run_id: str, run_started: str, cand
         row.update({
             "run_id": run_id,
             "run_started_at_utc": run_started,
-            "finding_id": f"adv-{abs(hash((candidate.registry, candidate.name, candidate.version, canonical))):x}"[:20],
-            "finding_fingerprint": f"{candidate.registry}:{candidate.name}:{candidate.version}:{canonical}",
+            "finding_fingerprint": hashlib.sha256(
+                f"{candidate.registry}\x1f{candidate.name}\x1f{candidate.version}\x1f{canonical}".encode()
+            ).hexdigest(),
+            "finding_id": hashlib.sha256(
+                f"{candidate.registry}\x1f{candidate.name}\x1f{candidate.version}\x1f{canonical}".encode()
+            ).hexdigest()[:20],
             "triage_priority": "P4",
             "registry": candidate.registry,
             "event_type": candidate.event_type,
