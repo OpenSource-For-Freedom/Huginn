@@ -48,6 +48,16 @@ class AdvisoryEnrichmentTests(unittest.TestCase):
         self.assertEqual(row["novelty_state"], "novel")
         self.assertEqual(row["dedup_match_basis"], "exact_package_version_no_advisory")
 
+    def test_partial_package_lookup_does_not_become_no_match(self):
+        row = semgrep_row()
+        osv = AdvisoryResult(status="ERROR", error="timeout")
+        ghsa = AdvisoryResult(status="NO_MATCH")
+        enrich_rows([row], FakeClient(osv=osv, ghsa=ghsa))
+        self.assertEqual(row["dedup_status"], "LOOKUP_FAILED")
+        self.assertEqual(row["novelty_state"], "unreviewed")
+        self.assertEqual(row["nvd_status"], "SKIPPED")
+        self.assertEqual(row["redhat_status"], "SKIPPED")
+
     def test_package_overlap_never_auto_becomes_known_exact(self):
         row = semgrep_row()
         osv = AdvisoryResult(
