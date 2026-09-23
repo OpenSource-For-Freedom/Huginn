@@ -45,6 +45,35 @@ class ReportingTests(unittest.TestCase):
         for column in REVIEW_COLUMNS:
             self.assertIn(column, rows[0])
 
+    def test_trivy_secret_is_reviewable(self):
+        payload = {"Results": [{"Target": "config.py", "Secrets": [{
+            "RuleID": "aws-access-key-id",
+            "Category": "AWS",
+            "Severity": "HIGH",
+            "Title": "AWS access key",
+            "StartLine": 4,
+            "EndLine": 4,
+            "Match": "AKIAEXAMPLE",
+        }]}]}
+        rows = normalize_trivy(
+            payload, run_id="r1", run_started="t", candidate=self.candidate,
+            artifact=self.artifact, sha256="abc", first_seen="t"
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["finding_class"], "secret_exposure")
+        self.assertEqual(rows[0]["cwe"], "CWE-798")
+        self.assertEqual(rows[0]["dedup_status"], "NOT_APPLICABLE")
+
+    def test_csv_neutralizes_formula_cells(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "review.csv"
+            row = {column: "" for column in REVIEW_COLUMNS}
+            row["package_name"] = "=HYPERLINK(\"https://example.invalid\")"
+            write_csv(path, REVIEW_COLUMNS, [row])
+            with path.open("r", encoding="utf-8-sig", newline="") as handle:
+                parsed = next(csv.DictReader(handle))
+            self.assertTrue(parsed["package_name"].startswith("'="))
+
     def test_csv_has_excel_friendly_bom_and_exact_header(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "review.csv"
