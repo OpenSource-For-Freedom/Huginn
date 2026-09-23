@@ -212,7 +212,10 @@ def normalize_trivy(payload: dict[str, Any], *, run_id: str, run_started: str, c
                 "fixed_version": "",
                 "title": _flat(secret.get("Title") or secret.get("Category") or rule),
                 "message": "Potential hard-coded credential or secret in shipped artifact.",
-                "evidence": _flat(secret.get("Match") or ""),
+                "evidence": (
+                    "secret_match_sha256="
+                    + hashlib.sha256(str(secret.get("Match") or "").encode("utf-8", "replace")).hexdigest()
+                ),
                 "source": "static secret detection",
                 "sink": _flat(secret.get("Category") or "credential material"),
                 "known_dependency": "false",
