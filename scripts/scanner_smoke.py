@@ -17,7 +17,7 @@ def main() -> None:
         archive = root / "fixture.tar.gz"
 
         files = {
-            "fixture/vuln.py": b"import os\ndef run(user_input):\n    os.system(user_input)\n",
+            "fixture/vuln.py": b"import os\ndef run():\n    user_input = input()\n    os.system(user_input)\n    eval(user_input)\n",
             "fixture/requirements.txt": b"jinja2==3.1.4\n",
         }
 
@@ -44,6 +44,7 @@ def main() -> None:
         }
 
         expected_rule = "huginn.generic.command-execution"
+        expected_taint_rule = "huginn.python.tainted-eval"
         expected_cve = "CVE-2024-56326"
 
         report = {
@@ -54,6 +55,7 @@ def main() -> None:
             "trivy_exit_code": outcome.trivy_exit_code,
             "trivy_vulnerability_ids": sorted(trivy_ids),
             "expected_semgrep_rule": expected_rule,
+            "expected_semgrep_taint_rule": expected_taint_rule,
             "expected_trivy_cve": expected_cve,
         }
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -61,6 +63,13 @@ def main() -> None:
         if not any(rule_id == expected_rule or rule_id.endswith(f".{expected_rule}") for rule_id in semgrep_ids):
             raise SystemExit(
                 f"Semgrep failed to detect {expected_rule}; got {sorted(semgrep_ids)}"
+            )
+        if not any(
+            rule_id == expected_taint_rule or rule_id.endswith(f".{expected_taint_rule}")
+            for rule_id in semgrep_ids
+        ):
+            raise SystemExit(
+                f"Semgrep failed to detect {expected_taint_rule}; got {sorted(semgrep_ids)}"
             )
         if expected_cve not in trivy_ids:
             raise SystemExit(
