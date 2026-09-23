@@ -61,6 +61,9 @@ jobs:
       - name: Reproduce Hunt 002 candidate findings
         run: python scripts/review_hunt002_candidates.py
 
+      - name: Trace candidate source boundaries
+        run: python scripts/trace_hunt002_candidates.py
+
       - name: Upload candidate review packet
         uses: actions/upload-artifact@v4
         with:
