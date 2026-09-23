@@ -273,6 +273,19 @@ def enrich_rows(rows: list[dict[str, str]], client: AdvisoryClient, checked_at: 
     checked_at = checked_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     for row in rows:
+        if row.get("finding_class") in {"secret_exposure", "misconfiguration"}:
+            row["osv_status"] = "SKIPPED"
+            row["ghsa_status"] = "SKIPPED"
+            row["nvd_status"] = "SKIPPED"
+            row["redhat_status"] = "SKIPPED"
+            row["enrichment_status"] = "NOT_APPLICABLE"
+            row["enrichment_error"] = ""
+            row["dedup_status"] = "NOT_APPLICABLE"
+            row["dedup_match_basis"] = "finding_class_not_advisory_dedup"
+            row["dedup_sources"] = ""
+            row["dedup_checked_at_utc"] = checked_at
+            continue
+
         registry = row.get("registry", "")
         known_dependency = row.get("known_dependency", "").lower() == "true"
         lookup_registry = row.get("dependency_ecosystem", "") if known_dependency else registry
