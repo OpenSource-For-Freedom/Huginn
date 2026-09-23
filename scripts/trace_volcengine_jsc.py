@@ -14,10 +14,13 @@ from huginn.discovery import USER_AGENT
 URL="https://files.pythonhosted.org/packages/ce/13/2064b8ff62237f906b662a4e7bb0b7582313c8d47abf3960447d0ec8ae8c/volcengine_python_sdk_aicc-0.0.41.tar.gz"
 SHA="2aae4691780916114ad477ebbb6c09eaff2c597b1a60b02c8905efd4b70944ab"
 FILES=[
- {"suffix":"bytedance/jeddak_secure_channel/client.py","start":100,"end":180},
- {"suffix":"bytedance/jeddak_secure_channel/crypto/envelope.py","start":180,"end":310},
- {"suffix":"bytedance/jeddak_secure_channel/crypto/aes.py","start":1,"end":260},
- {"suffix":"bytedance/jeddak_secure_channel/ra.py","start":1,"end":300},
+ {"suffix":"bytedance/volcengine_aicc_sdk/deepseek_inference_client.py","start":1,"end":180},
+ {"suffix":"bytedance/volcengine_aicc_sdk/secure_http_client.py","start":1,"end":220},
+ {"suffix":"bytedance/jeddak_secure_channel/client.py","start":1,"end":180},
+ {"suffix":"bytedance/jeddak_secure_channel/config.py","start":1,"end":260},
+ {"suffix":"bytedance/jeddak_secure_channel/crypto/envelope.py","start":1,"end":310},
+ {"suffix":"bytedance/jeddak_secure_channel/crypto/aes.py","start":1,"end":220},
+ {"suffix":"bytedance/jeddak_secure_channel/ra.py","start":190,"end":430},
 ]
 
 
