@@ -63,6 +63,8 @@ class ReportingTests(unittest.TestCase):
         self.assertEqual(rows[0]["finding_class"], "secret_exposure")
         self.assertEqual(rows[0]["cwe"], "CWE-798")
         self.assertEqual(rows[0]["dedup_status"], "NOT_APPLICABLE")
+        self.assertNotIn("AKIAEXAMPLE", rows[0]["evidence"])
+        self.assertTrue(rows[0]["evidence"].startswith("secret_match_sha256="))
 
     def test_csv_neutralizes_formula_cells(self):
         with tempfile.TemporaryDirectory() as td:
