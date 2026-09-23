@@ -32,7 +32,14 @@ REVIEW_COLUMNS = [
 MANIFEST_COLUMNS = [
     "run_id", "registry", "event_type", "package_name", "package_version", "purl", "published_at_utc", "first_seen_at_utc",
     "artifact_filename", "artifact_url", "artifact_sha256", "artifact_size_bytes", "registry_digest", "scan_status",
-    "scan_started_at_utc", "scan_finished_at_utc", "trivy_exit_code", "semgrep_exit_code", "finding_count", "error",
+    "scan_started_at_utc", "scan_finished_at_utc", "trivy_exit_code", "semgrep_exit_code", "finding_count",
+    "failure_stage", "error",
+]
+
+ALERT_COLUMNS = [
+    "run_id", "detected_at_utc", "alert_id", "severity", "registry", "package_name", "package_version",
+    "stage", "alert_type", "source", "endpoint", "message", "error_type", "retryable",
+    "coverage_impact", "affected_findings", "recommended_action", "status",
 ]
 
 
@@ -42,6 +49,12 @@ def _flat(value: Any) -> str:
     if isinstance(value, (dict, list)):
         value = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return str(value).replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
+
+
+def _csv_safe(value: str) -> str:
+    if value and value[0] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
 
 
 def _fingerprint(*parts: Any) -> str:
@@ -171,6 +184,50 @@ def normalize_trivy(payload: dict[str, Any], *, run_id: str, run_started: str, c
             row["triage_priority"] = _priority(severity, "HIGH", "known")
             rows.append(row)
 
+        for secret in result.get("Secrets") or []:
+            severity = _flat(secret.get("Severity") or "HIGH")
+            rule = _flat(secret.get("RuleID") or "trivy-secret")
+            row = _base(run_id, run_started, candidate, artifact, sha256, first_seen)
+            row.update({
+                "scanner": "trivy",
+                "scanner_version": scanner_version,
+                "rule_id": rule,
+                "ruleset_hash": "",
+                "finding_class": "secret_exposure",
+                "vulnerability_id": "",
+                "advisory_source": "",
+                "advisory_url": "",
+                "severity": severity,
+                "confidence": "HIGH",
+                "novelty_state": "unreviewed",
+                "cvss_score": "",
+                "cvss_vector": "",
+                "cwe": "CWE-798",
+                "file_path": target,
+                "start_line": _flat(secret.get("StartLine")),
+                "end_line": _flat(secret.get("EndLine")),
+                "dependency_ecosystem": "",
+                "dependency_name": "",
+                "installed_version": "",
+                "fixed_version": "",
+                "title": _flat(secret.get("Title") or secret.get("Category") or rule),
+                "message": "Potential hard-coded credential or secret in shipped artifact.",
+                "evidence": _flat(secret.get("Match") or ""),
+                "source": "static secret detection",
+                "sink": _flat(secret.get("Category") or "credential material"),
+                "known_dependency": "false",
+                "suspicious_package": "false",
+                "dedup_status": "NOT_APPLICABLE",
+                "dedup_sources": "",
+                "dedup_identifiers": "",
+                "dedup_checked_at_utc": "",
+            })
+            fp = _fingerprint(candidate.registry, candidate.name, candidate.version, "trivy-secret", rule, target, row["start_line"])
+            row["finding_fingerprint"] = fp
+            row["finding_id"] = fp[:20]
+            row["triage_priority"] = _priority(severity, "HIGH", "unreviewed")
+            rows.append(row)
+
         for mis in result.get("Misconfigurations") or []:
             severity = _flat(mis.get("Severity") or "UNKNOWN")
             rule = _flat(mis.get("ID"))
@@ -285,4 +342,4 @@ def write_csv(path: Path, columns: list[str], rows: Iterable[dict[str, Any]]) ->
         writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore", quoting=csv.QUOTE_MINIMAL)
         writer.writeheader()
         for row in rows:
-            writer.writerow({k: _flat(row.get(k, "")) for k in columns})
+            writer.writerow({k: _csv_safe(_flat(row.get(k, ""))) for k in columns})
