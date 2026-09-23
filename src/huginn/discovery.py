@@ -56,6 +56,32 @@ def _split_pypi_title(title: str) -> tuple[str, str] | None:
     return parts[0], parts[1]
 
 
+def _pypi_project_name(title: str, link: str) -> str:
+    parsed = urllib.parse.urlparse(link)
+    parts = [urllib.parse.unquote(part) for part in parsed.path.split("/") if part]
+    if parsed.hostname in {"pypi.org", "www.pypi.org"} and len(parts) >= 2 and parts[0] == "project":
+        return parts[1].strip()
+    return title.strip()
+
+
+def _pypi_first_release(meta: dict) -> tuple[str, str]:
+    releases = meta.get("releases") or {}
+    earliest: tuple[datetime, str, str] | None = None
+    for version, files in releases.items():
+        for item in files or []:
+            uploaded = str(item.get("upload_time_iso_8601") or item.get("upload_time") or "")
+            if not uploaded:
+                continue
+            stamp = _parse_iso(uploaded)
+            candidate = (stamp, str(version), uploaded)
+            if earliest is None or candidate[0] < earliest[0]:
+                earliest = candidate
+    if earliest:
+        return earliest[1], earliest[2]
+    version = str((meta.get("info") or {}).get("version") or "")
+    return version, ""
+
+
 def discover_pypi_feed(mode: str, limit: int) -> list[ReleaseCandidate]:
     url = PYPI_NEW if mode == "new" else PYPI_UPDATES
     root = ET.fromstring(_request(url, accept="application/rss+xml, application/xml;q=0.9, */*;q=0.1"))
@@ -70,13 +96,22 @@ def discover_pypi_feed(mode: str, limit: int) -> list[ReleaseCandidate]:
                 continue
             name, version = parsed
         else:
-            name = title
+            name = _pypi_project_name(title, link)
             if not name:
                 continue
-            meta = pypi_project_json(name)
-            version = str(meta.get("info", {}).get("version") or "")
+            try:
+                meta = pypi_project_json(name)
+            except urllib.error.HTTPError as exc:
+                # RSS can briefly retain projects that were deleted/yanked or whose
+                # CDN/API representation has not converged yet. Do not fail the batch.
+                if exc.code == 404:
+                    continue
+                raise
+            version, uploaded_at = _pypi_first_release(meta)
             if not version:
                 continue
+            if uploaded_at:
+                pub_date = uploaded_at
         candidates.append(
             ReleaseCandidate(
                 registry="pypi",

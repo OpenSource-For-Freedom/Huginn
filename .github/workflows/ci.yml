@@ -15,6 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          file-integrity: auto
+          ebpf: auto
+
       - name: Checkout
         uses: actions/checkout@v7
       - name: Python
@@ -35,6 +42,13 @@ jobs:
       HUGINN_GITHUB_TOKEN: ${{ github.token }}
       NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          file-integrity: auto
+          ebpf: auto
+
       - name: Checkout
         uses: actions/checkout@v7
       - name: Python
