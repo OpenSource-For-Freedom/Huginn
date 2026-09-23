@@ -128,6 +128,8 @@ def normalize_trivy(payload: dict[str, Any], *, run_id: str, run_started: str, c
             "pipenv": "pypi",
             "poetry": "pypi",
             "python-pkg": "pypi",
+            "uv": "pypi",
+            "pylock": "pypi",
             "bundler": "rubygems",
             "gemspec": "rubygems",
         }.get(result_type, "")
