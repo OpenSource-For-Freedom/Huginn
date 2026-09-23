@@ -330,6 +330,63 @@ def discover(registry: str, mode: str, limit: int, state: StateDB | None = None)
     raise DiscoveryError(f"Registry adapter not enabled: {registry}")
 
 
+
+def previous_release(candidate: ReleaseCandidate) -> ReleaseCandidate | None:
+    """Return the immediately preceding published version for static comparison."""
+    if candidate.event_type == "NEW_PACKAGE":
+        return None
+
+    versions: list[tuple[datetime, str, str]] = []
+
+    if candidate.registry == "npm":
+        packument = _npm_packument(candidate.name)
+        for version, timestamp in (packument.get("time") or {}).items():
+            if version in {"created", "modified"} or not isinstance(timestamp, str):
+                continue
+            versions.append((_parse_iso(timestamp), str(version), timestamp))
+
+    elif candidate.registry == "pypi":
+        meta = pypi_project_json(candidate.name)
+        for version, files in (meta.get("releases") or {}).items():
+            timestamps = [
+                str(item.get("upload_time_iso_8601") or item.get("upload_time") or "")
+                for item in (files or [])
+            ]
+            timestamps = [value for value in timestamps if value]
+            if timestamps:
+                earliest = min(timestamps, key=_parse_iso)
+                versions.append((_parse_iso(earliest), str(version), earliest))
+
+    elif candidate.registry == "rubygems":
+        encoded = urllib.parse.quote(candidate.name, safe="")
+        payload = json.loads(_request(f"https://rubygems.org/api/v1/versions/{encoded}.json"))
+        for item in payload:
+            version = str(item.get("number") or "")
+            created = str(item.get("created_at") or item.get("built_at") or "")
+            if version and created:
+                versions.append((_parse_iso(created), version, created))
+
+    else:
+        return None
+
+    current = next((entry for entry in versions if entry[1] == candidate.version), None)
+    if current is None:
+        return None
+
+    earlier = [entry for entry in versions if entry[0] < current[0] and entry[1] != candidate.version]
+    if not earlier:
+        return None
+
+    _, version, published = max(earlier, key=lambda entry: entry[0])
+    return ReleaseCandidate(
+        registry=candidate.registry,
+        name=candidate.name,
+        version=version,
+        event_type="PREVIOUS_VERSION",
+        published_at=published,
+        source_url=candidate.source_url,
+    )
+
 def resolve_artifact(candidate: ReleaseCandidate) -> Artifact:
     if candidate.registry == "pypi":
         return resolve_pypi_artifact(candidate)
