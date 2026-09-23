@@ -1,112 +1,132 @@
 # Huginn Manual Review Workflow
 
-Huginn capture is intentionally review-first. A scanner finding is evidence to inspect, not an automatically validated vulnerability.
+Huginn is review-first. Scanner output is evidence to inspect, not an automatically validated vulnerability.
 
 ## Run outputs
 
 Every capture run emits a private review packet:
 
-- review_findings.csv — one row per Trivy or Semgrep finding. This is the primary analyst worksheet.
-- scan_manifest.csv — one row per package release attempted, including failures and finding counts. Use this to verify coverage.
-- run_summary.json — run counts and automation state.
+- review_findings.csv — one row per Trivy, Semgrep, or exact advisory finding.
+- scan_manifest.csv — one row per package release attempted, including failures.
+- advisory_evidence.json — raw normalized OSV, GHSA, NVD, and Red Hat lookup evidence.
+- run_summary.json — run counts, queue state, and automation state.
 
-The CSV is UTF-8 with BOM so it opens cleanly in Excel.
+The CSV is UTF-8 with BOM for Excel compatibility.
+
+## Registry coverage
+
+Huginn currently supports:
+
+1. npm — durable replication cursor plus packument/version reconciliation.
+2. PyPI — newest-package and latest-update feeds.
+3. RubyGems — latest and just-updated activity feeds.
+
+NEW_PACKAGE and NEW_VERSION remain distinct queue events.
+
+VALIDATION_SEED is reserved for deliberately selected historical controls and must never be interpreted as a new discovery.
+
+## Queue behavior
+
+Discovery writes releases to SQLite before scanning.
+
+Jobs use transactional leases. Failed jobs enter retry state with exponential backoff; expired leases can be reclaimed after a worker crash. First-publish events receive higher priority than ordinary update churn.
+
+run_summary.json reports queue state so backlog and retry behavior are visible.
 
 ## review_findings.csv inspection fields
 
-Every row includes enough immutable evidence to inspect the published package before making a decision:
+Every row includes:
 
 - Run identity: run_id, run_started_at_utc, finding_id, finding_fingerprint, triage_priority.
 - Package identity: registry, event_type, package_name, package_version, PURL, publication time, first-seen time.
-- Artifact integrity: artifact filename, source URL, SHA-256, byte size, and registry digest when available.
-- Scanner identity: scanner, scanner_version, rule_id, and ruleset_hash.
-- Finding classification: finding_class, vulnerability_id, advisory_source, advisory_url, severity, confidence, novelty_state, CVSS, CWE.
-- Exact inspection location: file_path, start_line, end_line.
+- Artifact integrity: artifact filename, URL, SHA-256, byte size, registry digest.
+- Scanner identity: scanner, scanner_version, rule_id, ruleset_hash.
+- Finding classification: finding_class, vulnerability_id, advisory source/URL, severity, confidence, novelty_state, CVSS, CWE.
+- Inspection location: file_path, start_line, end_line.
 - Dependency context: dependency_name, installed_version, fixed_version.
 - Evidence: title, message, evidence, source, sink, known_dependency, suspicious_package.
-- Dedup state: dedup_status, dedup_sources, dedup_identifiers, dedup_checked_at_utc.
+- Dedup: dedup_status, dedup_sources, dedup_identifiers, dedup_checked_at_utc.
+- Analyst fields: review_status, reviewer, reviewer_decision, reviewer_notes, reachability/security-boundary/affected-version/known-advisory verification, false-positive reason, verified timestamp, disclosure state/reference.
 
-The analyst section is on the same row:
+## Dedup interpretation
 
-- review_status: PENDING, IN_REVIEW, VALIDATED, REJECTED, KNOWN, or DEFERRED.
-- reviewer: reviewer identity.
-- reviewer_decision: concise result such as confirmed, not_reachable, known_cve, or not_security_relevant.
-- reviewer_notes: evidence-based reasoning.
-- reachability_verified: true only when the relevant path is reachable or meaningfully exposed.
-- security_boundary_verified: true only after a real confidentiality, integrity, or availability boundary is confirmed.
-- affected_version_verified: true only after the exact published artifact/version is confirmed affected.
-- known_advisory_verified: true only after checking whether the same vulnerability is already known.
-- false_positive_reason: required when rejecting a row.
-- verified_at_utc: timestamp of final manual review.
-- disclosure_status: remains NOT_READY until a separate disclosure process is intentionally started.
-- disclosure_reference: private tracking reference.
+KNOWN_EXACT means the same advisory/CVE is directly corroborated or an advisory source explicitly reports the exact package/version as affected.
 
-A row cannot pass the review validator as VALIDATED unless all four verification booleans are true and reviewer identity, decision, notes, and timestamp are present.
+POSSIBLE_MATCH means the package/version overlaps known advisory information, but Huginn cannot prove it is the same weakness.
+
+NO_MATCH means enabled advisory sources completed without a matching advisory. It does not by itself prove a new vulnerability.
+
+LOOKUP_FAILED means enrichment was incomplete and manual validation must not treat the finding as novel yet.
 
 ## Finding interpretation
 
 ### Trivy
 
-Known dependency vulnerabilities are emitted as known_dependency_vulnerability with the CVE/advisory ID, installed version, fixed version, severity, CVSS where available, and the dependency/manifest target. These rows are marked KNOWN_EXACT because Trivy is reporting an existing advisory.
-
-A Trivy dependency CVE is useful package intelligence but is not a novel CVE candidate by itself.
+Known dependency vulnerabilities are evidence of existing CVEs in the package dependency context. They remain useful inspection rows but are not novel CVE candidates by themselves.
 
 ### Semgrep
 
-Semgrep rows are static candidates. They carry exact path, line, evidence, rule ID, ruleset hash, category, CWE where defined, and confidence.
+Semgrep rows are static candidates with exact code location and rule evidence. A Semgrep hit becomes a vulnerability candidate only after source/reachability/security-boundary and affected-version checks.
 
-They remain unreviewed and NOT_CHECKED until manual verification and advisory-dedup enrichment are complete.
+### Advisory enrichment rows
 
-Reverse-shell indicators are explicitly marked suspicious_package=true and should be handled as suspicious/malicious-package intelligence rather than automatically treated as CVE candidates.
+Exact package/version advisory matches are added to the same CSV as known_package_advisory rows. These are useful controls and context, not new discoveries.
 
-## Review validation
+### Suspicious-package indicators
 
-After editing a review CSV, run:
+Reverse-shell/malware-like indicators are marked suspicious_package=true and remain separate from CVE novelty decisions.
+
+## Manual validation
+
+After editing a review CSV:
 
     huginn-review-validate reports/<run-id>/review_findings.csv
 
-The validator rejects incomplete VALIDATED rows and requires a false-positive reason for REJECTED rows.
+VALIDATED rows require all four verification booleans true plus reviewer identity, decision, notes, and timestamp.
 
-## Workflow safety gate
+REJECTED rows require false_positive_reason.
 
-The GitHub workflow supports manual workflow_dispatch runs immediately.
-
-An hourly schedule is defined, but scheduled capture runs only when the private repository variable HUGINN_SCHEDULE_ENABLED is exactly true. This permits several manual review cycles before unattended capture is enabled.
-
-The workflow does not submit findings to a CNA, MITRE, NVD, a vendor, or any public endpoint.
+A NO_MATCH row should not be marked VALIDATED solely because advisory sources found nothing.
 
 ## Isolation
 
-Package artifacts are downloaded as opaque bytes. Parsing and extraction occur only inside rootless Podman with:
+Package archives are untrusted from the first byte.
 
-- no network;
-- read-only container root;
-- all capabilities dropped;
-- no-new-privileges;
-- PID, CPU, memory, and tmpfs limits;
-- a short-lived named volume for extracted source;
-- no container-engine socket inside the scan;
-- no package execution or install scripts.
+Parsing/extraction and static scanning occur inside rootless Podman with no network, read-only root, dropped capabilities, no-new-privileges, resource limits, and short-lived scan storage.
 
-Trivy and Semgrep inspect the extracted tree with network disabled. The short-lived scan volume is deleted after each package.
+Trivy receives a disposable copy of the trusted vulnerability database cache for each package scan.
 
-## Current registry coverage
+No package code is executed.
 
-The first runnable capture slice enables:
+## Workflow controls
 
-1. PyPI newest-package and latest-update RSS feeds.
-2. RubyGems latest and just-updated activity feeds.
+Every workflow job starts with Wraith Security Legion Runner pinned to a full commit SHA, currently in audit mode with telemetry disabled.
 
-npm remains the next adapter. Its current replication endpoint needs a durable cursor plus packument reconciliation, so it should be implemented explicitly rather than approximated with scraping or a lossy polling shortcut.
+The CVE capture workflow supports manual runs immediately.
 
-## Next implementation gate
+The hourly production schedule remains gated by HUGINN_SCHEDULE_ENABLED and targets the dedicated self-hosted runner labeled huginn.
 
-Before scheduled capture is enabled, complete several manual runs and inspect:
+CI separately runs:
 
-- false-positive rate by Semgrep rule;
-- package scan failure rate;
-- average package size and scan time;
-- manifest-to-findings coverage;
-- whether the CSV evidence is sufficient to confirm or reject a finding without reopening raw scanner JSON.
+- unit tests;
+- known-vulnerable validation controls;
+- a current-release live canary.
 
-After that baseline, add npm cursor-following and OSV/NVD/Red Hat/GHSA enrichment before any disclosure automation is considered.
+No workflow submits to a CNA, MITRE, NVD, a vendor, or a public disclosure endpoint.
+
+## Analyst sequence
+
+For a potentially novel row:
+
+1. verify the exact artifact SHA-256 and version;
+2. inspect the exact file/line and surrounding code;
+3. establish attacker-controlled or untrusted input;
+4. establish reachability;
+5. establish the security-sensitive sink/boundary;
+6. confirm concrete confidentiality, integrity, or availability impact;
+7. confirm the vulnerable code is shipped and relevant;
+8. determine the affected version range;
+9. re-run advisory checks and manually inspect possible matches;
+10. only then mark the row VALIDATED.
+
+Disclosure remains a separate, deliberate step after validation.
