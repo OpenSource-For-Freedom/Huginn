@@ -29,6 +29,11 @@ class MergeHuntReportsTests(unittest.TestCase):
                     writer = csv.DictWriter(f, fieldnames=["registry", "package_name", "package_version"])
                     writer.writeheader()
                     writer.writerow({"registry": registry, "package_name": registry, "package_version": "1.0.0"})
+                with (packet / "operational_alerts.csv").open("w", encoding="utf-8-sig", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=["severity", "registry", "stage"])
+                    writer.writeheader()
+                    if registry == "npm":
+                        writer.writerow({"severity": "HIGH", "registry": registry, "stage": "advisory_enrichment"})
                 (packet / "run_summary.json").write_text(
                     json.dumps({
                         "registry": registry,
@@ -39,6 +44,9 @@ class MergeHuntReportsTests(unittest.TestCase):
                         "possible_match_count": 0,
                         "known_exact_count": 0,
                         "lookup_failed_count": 0,
+                        "operational_alert_count": 1 if registry == "npm" else 0,
+                        "critical_coverage_alert_count": 0,
+                        "high_coverage_alert_count": 1 if registry == "npm" else 0,
                     }),
                     encoding="utf-8",
                 )
@@ -50,6 +58,11 @@ class MergeHuntReportsTests(unittest.TestCase):
             manifest_fields, manifest_rows = read_csvs(root, "scan_manifest.csv")
             self.assertEqual(len(manifest_rows), 3)
             self.assertEqual(manifest_fields, ["registry", "package_name", "package_version"])
+
+            alert_fields, alert_rows = read_csvs(root, "operational_alerts.csv")
+            self.assertEqual(alert_fields, ["severity", "registry", "stage"])
+            self.assertEqual(len(alert_rows), 1)
+            self.assertEqual(alert_rows[0]["registry"], "npm")
 
             summaries = load_summaries(root)
             self.assertEqual(len(summaries), 3)
