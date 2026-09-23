@@ -16,6 +16,16 @@ def _path_noise(path: str) -> list[str]:
     overlap = sorted(parts & NOISE_PATH_PARTS)
     if overlap:
         reasons.append("non_runtime_path:" + ",".join(overlap))
+
+    filename = normalized.rsplit("/", 1)[-1]
+    test_file = (
+        filename in {"test.py", "tests.py"}
+        or filename.startswith("test_")
+        or filename.endswith(("_test.py", "_tests.py", ".test.js", ".spec.js", ".test.ts", ".spec.ts"))
+    )
+    if test_file:
+        reasons.append("test_file")
+
     if normalized.endswith((".min.js", ".map")):
         reasons.append("generated_or_minified")
     return reasons
