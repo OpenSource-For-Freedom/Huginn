@@ -45,6 +45,47 @@ class ReportingTests(unittest.TestCase):
         for column in REVIEW_COLUMNS:
             self.assertIn(column, rows[0])
 
+    def test_semgrep_prefers_isolated_static_excerpt(self):
+        payload = {"version": "1.177.0", "results": [{
+            "check_id": "huginn.generic.command-execution",
+            "path": "demo.py",
+            "start": {"line": 12},
+            "end": {"line": 12},
+            "extra": {
+                "severity": "ERROR",
+                "message": "command",
+                "lines": "requires login",
+                "huginn_excerpt": "10: x = input()\\n11: os.system(x)",
+                "metadata": {
+                    "huginn_category": "command_execution",
+                    "huginn_confidence": "MEDIUM",
+                    "cwe": "CWE-78",
+                },
+            },
+        }]}
+        rows = normalize_semgrep(
+            payload, run_id="r1", run_started="t", candidate=self.candidate,
+            artifact=self.artifact, sha256="abc", first_seen="t", ruleset_hash="rules"
+        )
+        self.assertEqual(rows[0]["evidence_source"], "isolated_static_excerpt")
+        self.assertIn("os.system(x)", rows[0]["evidence"])
+        self.assertNotIn("requires login", rows[0]["evidence"])
+
+    def test_semgrep_ignores_login_placeholder_without_excerpt(self):
+        payload = {"results": [{
+            "check_id": "huginn.generic.dynamic-eval",
+            "path": "demo.py",
+            "start": {"line": 1},
+            "end": {"line": 1},
+            "extra": {"lines": "requires login", "metadata": {}},
+        }]}
+        rows = normalize_semgrep(
+            payload, run_id="r1", run_started="t", candidate=self.candidate,
+            artifact=self.artifact, sha256="abc", first_seen="t"
+        )
+        self.assertEqual(rows[0]["evidence"], "")
+        self.assertEqual(rows[0]["evidence_source"], "unavailable")
+
     def test_trivy_secret_is_reviewable(self):
         payload = {"Results": [{"Target": "config.py", "Secrets": [{
             "RuleID": "aws-access-key-id",
