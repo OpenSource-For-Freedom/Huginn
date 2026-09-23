@@ -279,9 +279,9 @@ def enrich_rows(rows: list[dict[str, str]], client: AdvisoryClient, checked_at: 
         package = row.get("dependency_name", "") if known_dependency else row.get("package_name", "")
         version = row.get("installed_version", "") if known_dependency else row.get("package_version", "")
 
+        pre_errors: list[str] = []
         if lookup_registry not in OSV_ECOSYSTEM:
-            row["enrichment_status"] = "PARTIAL"
-            row["enrichment_error"] = "dependency ecosystem unavailable for package-aware advisory lookup"
+            pre_errors.append("dependency ecosystem unavailable for package-aware advisory lookup")
             lookup_registry = ""
         if not package or not version:
             row["enrichment_status"] = "SKIPPED"
@@ -295,7 +295,7 @@ def enrich_rows(rows: list[dict[str, str]], client: AdvisoryClient, checked_at: 
         ids = set(osv.ids) | set(ghsa.ids)
         cves = set(osv.cves) | set(ghsa.cves)
         cwes = set(osv.cwes) | set(ghsa.cwes)
-        errors = [x.error for x in (osv, ghsa) if x.error]
+        errors = pre_errors + [x.error for x in (osv, ghsa) if x.error]
 
         row["osv_status"] = osv.status
         row["osv_ids"] = _joined(osv.ids)
@@ -328,9 +328,19 @@ def enrich_rows(rows: list[dict[str, str]], client: AdvisoryClient, checked_at: 
             if redhat.error:
                 errors.append(f"Red Hat {cve_id}: {redhat.error}")
 
-        row["nvd_status"] = "MATCH" if "MATCH" in nvd_states else ("ERROR" if "ERROR" in nvd_states else "NO_MATCH")
+        row["nvd_status"] = (
+            "MATCH" if "MATCH" in nvd_states
+            else "ERROR" if "ERROR" in nvd_states
+            else "NO_MATCH" if nvd_states
+            else "SKIPPED"
+        )
         row["nvd_ids"] = _joined(nvd_ids)
-        row["redhat_status"] = "MATCH" if "MATCH" in redhat_states else ("ERROR" if "ERROR" in redhat_states else "NO_MATCH")
+        row["redhat_status"] = (
+            "MATCH" if "MATCH" in redhat_states
+            else "ERROR" if "ERROR" in redhat_states
+            else "NO_MATCH" if redhat_states
+            else "SKIPPED"
+        )
         row["redhat_ids"] = _joined(redhat_ids)
         row["advisory_cves"] = _joined(cves)
         row["advisory_cwes"] = _joined(cwes)
@@ -346,7 +356,7 @@ def enrich_rows(rows: list[dict[str, str]], client: AdvisoryClient, checked_at: 
             dedup_status = "POSSIBLE_MATCH"
             novelty = "possible_match"
             basis = "package_version+cwe" if overlap else "package_version"
-        elif osv.status == "ERROR" and ghsa.status == "ERROR":
+        elif "ERROR" in {osv.status, ghsa.status}:
             dedup_status = "LOOKUP_FAILED"
             novelty = "unreviewed"
             basis = "lookup_failed"
