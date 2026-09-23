@@ -21,6 +21,9 @@ REVIEW_COLUMNS = [
     "dedup_match_basis", "enrichment_status", "enrichment_error",
     "osv_status", "osv_ids", "ghsa_status", "ghsa_ids", "nvd_status", "nvd_ids",
     "redhat_status", "redhat_ids", "advisory_cves", "advisory_cwes",
+    "validation_kind", "source_to_sink", "validation_state", "validation_score", "validation_reasons",
+    "reachability_state", "reachability_basis", "shipped_code_assessment", "analyst_queue",
+    "previous_version", "previous_finding_present", "version_delta",
     "review_status", "reviewer", "reviewer_decision", "reviewer_notes", "reachability_verified",
     "security_boundary_verified", "affected_version_verified", "known_advisory_verified", "false_positive_reason",
     "verified_at_utc", "disclosure_status", "disclosure_reference",
@@ -79,6 +82,18 @@ def _base(run_id: str, run_started: str, candidate: ReleaseCandidate, artifact: 
         "known_advisory_verified": "",
         "false_positive_reason": "",
         "verified_at_utc": "",
+        "validation_kind": "",
+        "source_to_sink": "",
+        "validation_state": "UNVALIDATED",
+        "validation_score": "0",
+        "validation_reasons": "",
+        "reachability_state": "UNKNOWN",
+        "reachability_basis": "",
+        "shipped_code_assessment": "UNKNOWN",
+        "analyst_queue": "UNCLASSIFIED",
+        "previous_version": "",
+        "previous_finding_present": "",
+        "version_delta": "UNKNOWN",
         "disclosure_status": "NOT_READY",
         "disclosure_reference": "",
     }
@@ -215,6 +230,8 @@ def normalize_semgrep(payload: dict[str, Any], *, run_id: str, run_started: str,
         rule = _flat(finding.get("check_id"))
         category = _flat(metadata.get("huginn_category") or metadata.get("category") or "static_pattern")
         suspicious = str(metadata.get("suspicious_package", False)).lower()
+        validation_kind = _flat(metadata.get("huginn_validation") or "sink_only")
+        source_to_sink = str(metadata.get("huginn_source_to_sink", False)).lower()
         row = _base(run_id, run_started, candidate, artifact, sha256, first_seen)
         row.update({
             "scanner": "semgrep",
@@ -245,6 +262,8 @@ def normalize_semgrep(payload: dict[str, Any], *, run_id: str, run_started: str,
             "sink": _flat(metadata.get("huginn_sink") or category),
             "known_dependency": "false",
             "suspicious_package": suspicious,
+            "validation_kind": validation_kind,
+            "source_to_sink": source_to_sink,
             "dedup_status": "NOT_CHECKED",
             "dedup_sources": "",
             "dedup_identifiers": "",
