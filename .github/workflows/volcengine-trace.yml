@@ -40,10 +40,15 @@ jobs:
       - name: Trace secure-channel trust boundary
         run: python scripts/trace_volcengine_jsc.py
 
+      - name: Scope candidate across PyPI releases
+        run: python scripts/scope_volcengine_versions.py
+
       - name: Upload trace
         uses: actions/upload-artifact@v4
         with:
           name: volcengine-static-trace-${{ github.run_id }}
-          path: candidate-review/volcengine_jsc_trace.json
+          path: |
+            candidate-review/volcengine_jsc_trace.json
+            candidate-review/volcengine_version_scope.json
           retention-days: 30
           if-no-files-found: error
