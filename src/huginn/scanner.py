@@ -76,7 +76,12 @@ class PodmanScanner:
                 "-v", f"{scan_cache}:/cache:rw",
                 self.unpack_image,
                 "python", "-c",
-                "import shutil; shutil.copytree('/trusted', '/cache', dirs_exist_ok=True)",
+                (
+                    "from pathlib import Path; import shutil; "
+                    "db=Path('/trusted/db/trivy.db'); "
+                    "assert db.is_file(), 'trusted Trivy DB missing at /trusted/db/trivy.db'; "
+                    "shutil.copytree('/trusted', '/cache', dirs_exist_ok=True)"
+                ),
             ]
             self._run(seed_cache)
 
@@ -95,6 +100,7 @@ class PodmanScanner:
                 "-v", f"{source_volume}:/scan:ro",
                 "-v", f"{scan_cache}:/root/.cache/trivy:rw",
                 self.trivy_image,
+                "--cache-dir", "/root/.cache/trivy",
                 "fs", "--skip-db-update", "--format", "json", "--scanners", "vuln,misconfig", "/scan/src",
             ]
             trivy = self._run(trivy_cmd)
