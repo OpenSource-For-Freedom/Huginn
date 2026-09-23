@@ -15,7 +15,7 @@ REVIEW_COLUMNS = [
     "artifact_filename", "artifact_url", "artifact_sha256", "artifact_size_bytes", "registry_digest",
     "scanner", "scanner_version", "rule_id", "ruleset_hash", "finding_class", "vulnerability_id", "advisory_source",
     "advisory_url", "severity", "confidence", "novelty_state", "cvss_score", "cvss_vector", "cwe",
-    "file_path", "start_line", "end_line", "dependency_name", "installed_version", "fixed_version",
+    "file_path", "start_line", "end_line", "dependency_ecosystem", "dependency_name", "installed_version", "fixed_version",
     "title", "message", "evidence", "source", "sink", "known_dependency", "suspicious_package",
     "dedup_status", "dedup_sources", "dedup_identifiers", "dedup_checked_at_utc",
     "dedup_match_basis", "enrichment_status", "enrichment_error",
@@ -89,6 +89,18 @@ def normalize_trivy(payload: dict[str, Any], *, run_id: str, run_started: str, c
     rows: list[dict[str, str]] = []
     for result in payload.get("Results") or []:
         target = _flat(result.get("Target"))
+        result_type = _flat(result.get("Type")).lower()
+        dependency_ecosystem = {
+            "npm": "npm",
+            "yarn": "npm",
+            "pnpm": "npm",
+            "pip": "pypi",
+            "pipenv": "pypi",
+            "poetry": "pypi",
+            "python-pkg": "pypi",
+            "bundler": "rubygems",
+            "gemspec": "rubygems",
+        }.get(result_type, "")
         for vuln in result.get("Vulnerabilities") or []:
             vuln_id = _flat(vuln.get("VulnerabilityID"))
             severity = _flat(vuln.get("Severity") or "UNKNOWN")
@@ -120,6 +132,7 @@ def normalize_trivy(payload: dict[str, Any], *, run_id: str, run_started: str, c
                 "file_path": target,
                 "start_line": "",
                 "end_line": "",
+                "dependency_ecosystem": dependency_ecosystem,
                 "dependency_name": _flat(vuln.get("PkgName")),
                 "installed_version": _flat(vuln.get("InstalledVersion")),
                 "fixed_version": _flat(vuln.get("FixedVersion")),
@@ -163,6 +176,7 @@ def normalize_trivy(payload: dict[str, Any], *, run_id: str, run_started: str, c
                 "file_path": target,
                 "start_line": _flat((mis.get("CauseMetadata") or {}).get("StartLine")),
                 "end_line": _flat((mis.get("CauseMetadata") or {}).get("EndLine")),
+                "dependency_ecosystem": "",
                 "dependency_name": "",
                 "installed_version": "",
                 "fixed_version": "",
@@ -220,6 +234,7 @@ def normalize_semgrep(payload: dict[str, Any], *, run_id: str, run_started: str,
             "file_path": _flat(finding.get("path")),
             "start_line": _flat(start.get("line")),
             "end_line": _flat(end.get("line")),
+            "dependency_ecosystem": "",
             "dependency_name": "",
             "installed_version": "",
             "fixed_version": "",
