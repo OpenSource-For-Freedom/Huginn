@@ -60,14 +60,31 @@ class PodmanScanner:
     def scan(self, artifact_path: Path) -> ScanOutcome:
         if not shutil.which("podman"):
             raise ScanError("podman is required and was not found in PATH")
-        volume = f"huginn-scan-{uuid.uuid4().hex}"
-        self._run(["podman", "volume", "create", volume])
+
+        token = uuid.uuid4().hex
+        source_volume = f"huginn-scan-{token}"
+        scan_cache = f"huginn-trivy-scan-{token}"
+        self._run(["podman", "volume", "create", source_volume])
+        self._run(["podman", "volume", "create", scan_cache])
+
         try:
+            # Copy the trusted persistent DB into an ephemeral per-scan cache.
+            # The untrusted Trivy process never receives write access to the persistent cache.
+            seed_cache = [
+                "podman", "run", "--rm", *self._base_security(),
+                "-v", f"{self.trivy_cache_volume}:/trusted:ro",
+                "-v", f"{scan_cache}:/cache:rw",
+                self.unpack_image,
+                "python", "-c",
+                "import shutil; shutil.copytree('/trusted', '/cache', dirs_exist_ok=True)",
+            ]
+            self._run(seed_cache)
+
             unpack = [
                 "podman", "run", "--rm", *self._base_security(),
                 "-v", f"{artifact_path.resolve()}:/input/package:ro,Z",
                 "-v", f"{self.archive_script}:/opt/huginn_archive.py:ro,Z",
-                "-v", f"{volume}:/work:rw",
+                "-v", f"{source_volume}:/work:rw",
                 self.unpack_image,
                 "python", "/opt/huginn_archive.py", "/input/package", "/work/src",
             ]
@@ -75,8 +92,8 @@ class PodmanScanner:
 
             trivy_cmd = [
                 "podman", "run", "--rm", *self._base_security(),
-                "-v", f"{volume}:/scan:ro",
-                "-v", f"{self.trivy_cache_volume}:/root/.cache/trivy:rw",
+                "-v", f"{source_volume}:/scan:ro",
+                "-v", f"{scan_cache}:/root/.cache/trivy:rw",
                 self.trivy_image,
                 "fs", "--skip-db-update", "--format", "json", "--scanners", "vuln,misconfig", "/scan/src",
             ]
@@ -84,13 +101,14 @@ class PodmanScanner:
 
             semgrep_cmd = [
                 "podman", "run", "--rm", *self._base_security(),
-                "-v", f"{volume}:/scan:ro",
+                "-v", f"{source_volume}:/scan:ro",
                 "-v", f"{self.rules_file}:/rules/semgrep.yml:ro,Z",
                 self.semgrep_image,
                 "semgrep", "scan", "--config", "/rules/semgrep.yml", "--json",
                 "--no-git-ignore", "--scan-unknown-extensions", "/scan/src",
             ]
             semgrep = self._run(semgrep_cmd, allowed={0, 1})
+
             return ScanOutcome(
                 trivy=json.loads(trivy.stdout or "{}"),
                 semgrep=json.loads(semgrep.stdout or "{}"),
@@ -98,4 +116,11 @@ class PodmanScanner:
                 semgrep_exit_code=semgrep.returncode,
             )
         finally:
-            subprocess.run(["podman", "volume", "rm", "-f", volume], capture_output=True, text=True, check=False)
+            subprocess.run(
+                ["podman", "volume", "rm", "-f", source_volume],
+                capture_output=True, text=True, check=False,
+            )
+            subprocess.run(
+                ["podman", "volume", "rm", "-f", scan_cache],
+                capture_output=True, text=True, check=False,
+            )
