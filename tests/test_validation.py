@@ -63,6 +63,19 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(row["analyst_queue"], "LOW_SIGNAL")
         self.assertIn("non_runtime_path:tests", row["validation_reasons"])
 
+    def test_test_filename_is_deprioritized(self):
+        row = base_row()
+        row.update({
+            "file_path": "package/opengate_tests.py",
+            "validation_kind": "sink_only",
+            "source_to_sink": "false",
+            "confidence": "LOW",
+            "severity": "MEDIUM",
+        })
+        apply_validation([row], previous_compare_status="UNAVAILABLE")
+        self.assertEqual(row["validation_state"], "NOISE_LIKELY")
+        self.assertIn("test_file", row["validation_reasons"])
+
     def test_dist_path_is_not_automatically_noise(self):
         row = base_row()
         row.update({
