@@ -167,6 +167,7 @@ class PodmanScanner:
                     "podman", "run", "--rm", *self._base_security(),
                     "-v", f"{source_volume}:/scan:ro",
                     "-e", f"HUGINN_FINDINGS={json.dumps(requests, separators=(',', ':'))}",
+                    "-e", f"HUGINN_EXCERPT_RADIUS={os.environ.get('HUGINN_EXCERPT_RADIUS', '2')}",
                     self.unpack_image,
                     "python", "-c", excerpt_script,
                 ]
