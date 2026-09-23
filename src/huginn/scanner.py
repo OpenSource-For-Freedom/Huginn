@@ -104,8 +104,12 @@ class PodmanScanner:
                 "-v", f"{source_volume}:/scan:ro",
                 "-v", f"{self.rules_file}:/rules/semgrep.yml:ro,Z",
                 "-e", "EIO_BACKEND=posix",
+                "-e", "HOME=/tmp",
+                "-e", "XDG_CACHE_HOME=/tmp/.cache",
+                "-e", "SEMGREP_SEND_METRICS=off",
                 self.semgrep_image,
                 "semgrep", "scan", "--config", "/rules/semgrep.yml", "--json",
+                "--metrics=off", "--disable-version-check",
                 "--no-git-ignore", "--scan-unknown-extensions", "/scan/src",
             ]
             semgrep = self._run(semgrep_cmd, allowed={0, 1})
