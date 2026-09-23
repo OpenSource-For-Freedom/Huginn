@@ -21,6 +21,12 @@ class ReleaseCandidate:
 
 
 @dataclass(slots=True)
+class DiscoveryBatch:
+    candidates: list[ReleaseCandidate] = field(default_factory=list)
+    checkpoint: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class Artifact:
     filename: str
     url: str
