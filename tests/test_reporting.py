@@ -28,6 +28,19 @@ class ReportingTests(unittest.TestCase):
         self.assertEqual(rows[0]["dedup_status"], "KNOWN_EXACT")
         self.assertEqual(rows[0]["review_status"], "PENDING")
 
+    def test_trivy_uv_dependency_maps_to_pypi(self):
+        payload = {"Results": [{"Target": "uv.lock", "Type": "uv", "Vulnerabilities": [{
+            "VulnerabilityID": "CVE-2026-9999",
+            "PkgName": "pillow",
+            "InstalledVersion": "11.3.0",
+            "Severity": "HIGH",
+        }]}]}
+        rows = normalize_trivy(
+            payload, run_id="r1", run_started="t", candidate=self.candidate,
+            artifact=self.artifact, sha256="abc", first_seen="t"
+        )
+        self.assertEqual(rows[0]["dependency_ecosystem"], "pypi")
+
     def test_semgrep_has_inspection_columns(self):
         payload = {"version": "1.177.0", "results": [{
             "check_id": "huginn.generic.command-execution", "path": "demo.py",
