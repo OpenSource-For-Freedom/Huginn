@@ -136,7 +136,7 @@ def main() -> None:
     started = utc_now()
     run = run_id()
     out_dir = args.output / run
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(os.environ.get("HUGINN_REPO_ROOT", Path.cwd())).resolve()
     scanner = PodmanScanner(
         rules_file=repo_root / "rules" / "semgrep.yml",
         archive_script=repo_root / "src" / "huginn" / "archive.py",
