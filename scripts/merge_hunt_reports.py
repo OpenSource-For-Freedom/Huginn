@@ -85,6 +85,14 @@ def main() -> None:
         "possible_match_count": sum(int(s.get("possible_match_count", 0)) for s in summaries),
         "known_exact_count": sum(int(s.get("known_exact_count", 0)) for s in summaries),
         "lookup_failed_count": sum(int(s.get("lookup_failed_count", 0)) for s in summaries),
+        "high_value_manual_candidate_count": sum(
+            int(s.get("high_value_manual_candidate_count", 0)) for s in summaries
+        ),
+        "needs_reachability_review_count": sum(
+            int(s.get("needs_reachability_review_count", 0)) for s in summaries
+        ),
+        "noise_likely_count": sum(int(s.get("noise_likely_count", 0)) for s in summaries),
+        "static_dataflow_count": sum(int(s.get("static_dataflow_count", 0)) for s in summaries),
         "automatic_disclosure": False,
         "automatic_cve_submission": False,
     }
