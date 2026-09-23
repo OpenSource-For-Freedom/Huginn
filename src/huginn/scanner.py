@@ -70,9 +70,15 @@ class PodmanScanner:
         try:
             # Copy the trusted persistent DB into an ephemeral per-scan cache.
             # The untrusted Trivy process never receives write access to the persistent cache.
+            trusted_cache = self.trivy_cache_volume
+            if Path(trusted_cache).is_absolute():
+                trusted_mount = f"{Path(trusted_cache).resolve()}:/trusted:ro,Z"
+            else:
+                trusted_mount = f"{trusted_cache}:/trusted:ro"
+
             seed_cache = [
                 "podman", "run", "--rm", *self._base_security(),
-                "-v", f"{self.trivy_cache_volume}:/trusted:ro",
+                "-v", trusted_mount,
                 "-v", f"{scan_cache}:/cache:rw",
                 self.unpack_image,
                 "python", "-c",
