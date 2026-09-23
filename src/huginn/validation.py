@@ -33,10 +33,14 @@ def apply_validation(
     *,
     previous_version: str = "",
     previous_keys: set[tuple[str, str]] | None = None,
+    previous_compare_status: str = "NOT_RUN",
+    previous_compare_error: str = "",
 ) -> list[dict[str, str]]:
     previous_keys = previous_keys or set()
 
     for row in rows:
+        row["previous_compare_status"] = previous_compare_status
+        row["previous_compare_error"] = previous_compare_error
         reasons: list[str] = []
         score = 0
 
