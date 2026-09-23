@@ -161,11 +161,11 @@ def main() -> None:
     started = utc_now()
     run = run_id()
     out_dir = args.output / run
-    repo_root = Path(__file__).resolve().parents[2]
+    package_root = Path(__file__).resolve().parent
 
     scanner = PodmanScanner(
-        rules_file=repo_root / "rules" / "semgrep.yml",
-        archive_script=repo_root / "src" / "huginn" / "archive.py",
+        rules_file=Path(os.environ.get("HUGINN_RULES_FILE", package_root / "rules" / "semgrep.yml")).resolve(),
+        archive_script=Path(os.environ.get("HUGINN_ARCHIVE_SCRIPT", package_root / "archive.py")).resolve(),
         trivy_image=os.environ.get("HUGINN_TRIVY_IMAGE", "docker.io/aquasec/trivy:0.74.0"),
         semgrep_image=os.environ.get("HUGINN_SEMGREP_IMAGE", "docker.io/semgrep/semgrep:1.177.0"),
         unpack_image=os.environ.get("HUGINN_UNPACK_IMAGE", "docker.io/library/python:3.13-slim"),
