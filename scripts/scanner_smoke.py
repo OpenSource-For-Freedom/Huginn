@@ -58,8 +58,10 @@ def main() -> None:
         }
         print(json.dumps(report, indent=2, sort_keys=True))
 
-        if expected_rule not in semgrep_ids:
-            raise SystemExit(f"Semgrep failed to detect {expected_rule}")
+        if not any(rule_id == expected_rule or rule_id.endswith(f".{expected_rule}") for rule_id in semgrep_ids):
+            raise SystemExit(
+                f"Semgrep failed to detect {expected_rule}; got {sorted(semgrep_ids)}"
+            )
         if expected_cve not in trivy_ids:
             raise SystemExit(
                 f"Trivy failed to detect {expected_cve}; got {sorted(trivy_ids)}"
