@@ -17,3 +17,6 @@ huginn-review-validate = "huginn.review_validate:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+huginn = ["rules/*.yml"]
