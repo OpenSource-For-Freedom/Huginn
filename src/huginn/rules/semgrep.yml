@@ -3,7 +3,7 @@ rules:
     message: Dynamic evaluation primitive requires manual trust-boundary review.
     severity: WARNING
     languages: [generic]
-    pattern-regex: '\b(eval|exec)\s*\('
+    pattern-regex: '(?:^|[^.A-Za-z0-9_])(eval|exec)\\s*\\('
     metadata:
       huginn_category: dynamic_code_execution
       huginn_confidence: LOW
