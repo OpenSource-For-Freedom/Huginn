@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import uuid
@@ -23,7 +24,7 @@ class PodmanScanner:
         trivy_image: str = "docker.io/aquasec/trivy:0.74.0",
         semgrep_image: str = "docker.io/semgrep/semgrep:1.177.0",
         unpack_image: str = "docker.io/library/python:3.13-slim",
-        trivy_cache_volume: str = "huginn-trivy-cache",
+        trivy_cache_volume: str | None = None,
         timeout_seconds: int = 600,
     ):
         self.rules_file = rules_file.resolve()
@@ -31,7 +32,11 @@ class PodmanScanner:
         self.trivy_image = trivy_image
         self.semgrep_image = semgrep_image
         self.unpack_image = unpack_image
-        self.trivy_cache_volume = trivy_cache_volume
+        self.trivy_cache_volume = (
+            trivy_cache_volume
+            or os.environ.get("HUGINN_TRIVY_CACHE_VOLUME")
+            or "huginn-trivy-cache"
+        )
         self.timeout_seconds = timeout_seconds
 
     @property
@@ -70,13 +75,24 @@ class PodmanScanner:
         try:
             # Copy the trusted persistent DB into an ephemeral per-scan cache.
             # The untrusted Trivy process never receives write access to the persistent cache.
+            trusted_cache = self.trivy_cache_volume
+            if Path(trusted_cache).is_absolute():
+                trusted_mount = f"{Path(trusted_cache).resolve()}:/trusted:ro,Z"
+            else:
+                trusted_mount = f"{trusted_cache}:/trusted:ro"
+
             seed_cache = [
                 "podman", "run", "--rm", *self._base_security(),
-                "-v", f"{self.trivy_cache_volume}:/trusted:ro",
+                "-v", trusted_mount,
                 "-v", f"{scan_cache}:/cache:rw",
                 self.unpack_image,
                 "python", "-c",
-                "import shutil; shutil.copytree('/trusted', '/cache', dirs_exist_ok=True)",
+                (
+                    "from pathlib import Path; import shutil; "
+                    "db=Path('/trusted/db/trivy.db'); "
+                    "assert db.is_file(), 'trusted Trivy DB missing at /trusted/db/trivy.db'; "
+                    "shutil.copytree('/trusted', '/cache', dirs_exist_ok=True)"
+                ),
             ]
             self._run(seed_cache)
 
@@ -95,6 +111,7 @@ class PodmanScanner:
                 "-v", f"{source_volume}:/scan:ro",
                 "-v", f"{scan_cache}:/root/.cache/trivy:rw",
                 self.trivy_image,
+                "--cache-dir", "/root/.cache/trivy",
                 "fs", "--skip-db-update", "--format", "json", "--scanners", "vuln,misconfig", "/scan/src",
             ]
             trivy = self._run(trivy_cmd)
@@ -104,8 +121,12 @@ class PodmanScanner:
                 "-v", f"{source_volume}:/scan:ro",
                 "-v", f"{self.rules_file}:/rules/semgrep.yml:ro,Z",
                 "-e", "EIO_BACKEND=posix",
+                "-e", "HOME=/tmp",
+                "-e", "XDG_CACHE_HOME=/tmp/.cache",
+                "-e", "SEMGREP_SEND_METRICS=off",
                 self.semgrep_image,
                 "semgrep", "scan", "--config", "/rules/semgrep.yml", "--json",
+                "--metrics=off", "--disable-version-check",
                 "--no-git-ignore", "--scan-unknown-extensions", "/scan/src",
             ]
             semgrep = self._run(semgrep_cmd, allowed={0, 1})
