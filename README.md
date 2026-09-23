@@ -16,9 +16,9 @@ See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the Planning, Architecture,
 
 The first runnable capture pipeline is in src/huginn and .github/workflows/cve-capture.yml.
 
-It currently watches PyPI and RubyGems release feeds, downloads published artifacts as opaque bytes, unpacks and scans them in rootless no-network Podman containers, and emits a private review packet on every run:
+It watches npm, PyPI, and RubyGems release activity, downloads published artifacts as opaque bytes, unpacks and scans them in rootless no-network Podman containers, enriches findings against OSV, GitHub Global Security Advisories, NVD, and Red Hat Security Data, and emits a private review packet on every run:
 
-- review_findings.csv — every Trivy CVE/misconfiguration and Semgrep candidate with inline analyst-verification columns.
+- review_findings.csv — every Trivy CVE/misconfiguration and Semgrep candidate with inline analyst-verification and per-source advisory/dedup columns.
 - scan_manifest.csv — every package attempted, including scan failures and finding counts.
 - run_summary.json — run-level totals and automation state.
 
