@@ -49,18 +49,20 @@ def download(artifact: Artifact, dest: Path, max_bytes: int) -> tuple[str, int]:
     return digest, total
 
 
-def capture_candidates(candidates: list[ReleaseCandidate], state: StateDB, scanner: PodmanScanner,
-                       run: str, started: str, max_artifact_bytes: int,
-                       advisory_evidence: dict[str, dict]) -> tuple[list[dict], list[dict]]:
+def process_jobs(
+    leased: list[tuple[int, ReleaseCandidate]],
+    state: StateDB,
+    scanner: PodmanScanner,
+    run: str,
+    started: str,
+    max_artifact_bytes: int,
+    advisory_evidence: dict[str, dict],
+) -> tuple[list[dict], list[dict]]:
     findings: list[dict] = []
     manifests: list[dict] = []
 
-    for candidate in candidates:
+    for job_id, candidate in leased:
         first_seen = utc_now()
-        state.record_discovered(candidate.registry, candidate.name, candidate.version, candidate.event_type, first_seen)
-        if candidate.event_type != "VALIDATION_SEED" and state.is_completed(candidate.registry, candidate.name, candidate.version):
-            continue
-
         manifest = {
             "run_id": run, "registry": candidate.registry, "event_type": candidate.event_type,
             "package_name": candidate.name, "package_version": candidate.version, "purl": candidate.purl,
@@ -108,12 +110,16 @@ def capture_candidates(candidates: list[ReleaseCandidate], state: StateDB, scann
                 manifest["semgrep_exit_code"] = str(outcome.semgrep_exit_code)
                 manifest["finding_count"] = str(len(rows))
                 manifest["scan_status"] = "COMPLETED"
-                state.mark_completed(candidate.registry, candidate.name, candidate.version, sha256, utc_now())
+                completed = utc_now()
+                state.mark_completed(candidate.registry, candidate.name, candidate.version, sha256, completed)
+                state.complete_job(job_id, completed)
 
         except Exception as exc:
+            failed = utc_now()
             manifest["scan_status"] = "FAILED"
             manifest["error"] = f"{type(exc).__name__}: {exc}"[:4000]
             state.mark_failed(candidate.registry, candidate.name, candidate.version, manifest["error"])
+            state.retry_job(job_id, manifest["error"], failed)
         finally:
             manifest["scan_finished_at_utc"] = utc_now()
             manifests.append(manifest)
@@ -125,7 +131,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Capture static package findings into review-first CSV reports.")
     parser.add_argument("--registry", choices=["npm", "pypi", "rubygems", "all"], default="all")
     parser.add_argument("--mode", choices=["updates", "new"], default="updates")
-    parser.add_argument("--limit", type=int, default=25)
+    parser.add_argument("--limit", type=int, default=25, help="Discovery limit per enabled registry")
+    parser.add_argument("--max-jobs", type=int, default=75, help="Maximum queued releases leased for this run")
     parser.add_argument("--seed", action="append", default=[], help="Validation control: registry:name:version")
     parser.add_argument("--seed-only", action="store_true", help="Run validation controls without live registry discovery")
     parser.add_argument("--output", type=Path, default=Path("reports"))
@@ -153,9 +160,25 @@ def main() -> None:
         for registry in registries:
             candidates.extend(discover(registry, args.mode, args.limit, state))
 
+    for candidate in candidates:
+        discovered_at = utc_now()
+        state.record_discovered(
+            candidate.registry, candidate.name, candidate.version, candidate.event_type, discovered_at
+        )
+        priority = 0 if candidate.event_type == "VALIDATION_SEED" else (10 if candidate.event_type == "NEW_PACKAGE" else 50)
+        state.enqueue(
+            candidate,
+            discovered_at,
+            priority=priority,
+            force=candidate.event_type == "VALIDATION_SEED",
+        )
+
+    lease_limit = min(max(1, args.max_jobs), 500)
+    leased = state.lease(run, utc_now(), limit=lease_limit)
+
     advisory_evidence: dict[str, dict] = {}
-    all_findings, all_manifests = capture_candidates(
-        candidates, state, scanner, run, started, args.max_artifact_bytes, advisory_evidence
+    all_findings, all_manifests = process_jobs(
+        leased, state, scanner, run, started, args.max_artifact_bytes, advisory_evidence
     )
 
     all_findings.sort(key=lambda r: (
@@ -174,6 +197,9 @@ def main() -> None:
         "registry": args.registry,
         "mode": args.mode,
         "validation_seeds": args.seed,
+        "discovered_this_run": len(candidates),
+        "leased_this_run": len(leased),
+        "queue": state.queue_stats(),
         "finding_count": len(all_findings),
         "known_exact_count": sum(1 for r in all_findings if r.get("dedup_status") == "KNOWN_EXACT"),
         "possible_match_count": sum(1 for r in all_findings if r.get("dedup_status") == "POSSIBLE_MATCH"),
