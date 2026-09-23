@@ -15,6 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          disable-telemetry: true
+
       - name: Checkout
         uses: actions/checkout@v7
       - name: Python
@@ -38,6 +44,12 @@ jobs:
       HUGINN_TRIVY_CACHE_VOLUME: huginn-trivy-validation
       GITHUB_TOKEN: ${{ github.token }}
     steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          disable-telemetry: true
+
       - name: Checkout
         uses: actions/checkout@v7
 
