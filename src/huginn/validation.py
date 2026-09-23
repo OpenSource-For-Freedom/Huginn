@@ -5,7 +5,7 @@ from collections.abc import Iterable
 
 NOISE_PATH_PARTS = {
     "test", "tests", "testing", "example", "examples", "demo", "demos",
-    "docs", "doc", "fixtures", "fixture", "vendor", "generated", "dist",
+    "docs", "doc", "fixtures", "fixture", "bench", "benches", "benchmark", "benchmarks",
 }
 
 
