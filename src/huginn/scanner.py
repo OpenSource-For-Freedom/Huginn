@@ -103,15 +103,25 @@ class PodmanScanner:
                 "podman", "run", "--rm", *self._base_security(),
                 "-v", f"{source_volume}:/scan:ro",
                 "-v", f"{self.rules_file}:/rules/semgrep.yml:ro,Z",
+                "-e", "EIO_BACKEND=posix",
                 self.semgrep_image,
                 "semgrep", "scan", "--config", "/rules/semgrep.yml", "--json",
                 "--no-git-ignore", "--scan-unknown-extensions", "/scan/src",
             ]
             semgrep = self._run(semgrep_cmd, allowed={0, 1})
+            semgrep_payload = json.loads(semgrep.stdout or "{}")
+            semgrep_results = semgrep_payload.get("results") or []
+            semgrep_errors = semgrep_payload.get("errors") or []
+            if semgrep.returncode != 0 and not semgrep_results:
+                detail = json.dumps(semgrep_errors[:5], ensure_ascii=False)[:2000]
+                raise ScanError(
+                    f"Semgrep exited {semgrep.returncode} without findings; "
+                    f"analysis errors: {detail or 'none reported'}"
+                )
 
             return ScanOutcome(
                 trivy=json.loads(trivy.stdout or "{}"),
-                semgrep=json.loads(semgrep.stdout or "{}"),
+                semgrep=semgrep_payload,
                 trivy_exit_code=trivy.returncode,
                 semgrep_exit_code=semgrep.returncode,
             )
