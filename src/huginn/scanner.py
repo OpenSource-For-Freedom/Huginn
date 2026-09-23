@@ -112,7 +112,7 @@ class PodmanScanner:
                 "-v", f"{scan_cache}:/root/.cache/trivy:rw",
                 self.trivy_image,
                 "--cache-dir", "/root/.cache/trivy",
-                "fs", "--skip-db-update", "--format", "json", "--scanners", "vuln,misconfig", "/scan/src",
+                "fs", "--skip-db-update", "--format", "json", "--scanners", "vuln,misconfig,secret", "/scan/src",
             ]
             trivy = self._run(trivy_cmd)
 
