@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,7 +22,14 @@ def _now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def _request_json(url: str, *, data: dict | None = None, headers: dict[str, str] | None = None, timeout: int = 25) -> Any:
+def _request_json(
+    url: str,
+    *,
+    data: dict | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: int = 25,
+    attempts: int = 4,
+) -> Any:
     hdrs = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     if headers:
         hdrs.update(headers)
@@ -28,9 +37,23 @@ def _request_json(url: str, *, data: dict | None = None, headers: dict[str, str]
     if data is not None:
         body = json.dumps(data).encode()
         hdrs["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, data=body, headers=hdrs)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
+
+    for attempt in range(attempts):
+        req = urllib.request.Request(url, data=body, headers=hdrs)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            retryable = exc.code == 429 or 500 <= exc.code <= 599
+            if not retryable or attempt + 1 >= attempts:
+                raise
+            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            try:
+                base = float(retry_after) if retry_after else min(20.0, 1.5 * (2 ** attempt))
+            except ValueError:
+                base = min(20.0, 1.5 * (2 ** attempt))
+            time.sleep(base + random.uniform(0.0, 0.5))
+    raise RuntimeError("unreachable")
 
 
 def _ecosystem(registry: str) -> str:
@@ -112,7 +135,7 @@ def query_nvd(candidate: ReleaseCandidate, cve_ids: set[str]) -> list[dict[str, 
         headers["apiKey"] = key
     urls: list[tuple[str, bool]] = []
     if cve_ids:
-        for cve in sorted(cve_ids)[:20]:
+        for cve in sorted(cve_ids)[:5]:
             urls.append(("https://services.nvd.nist.gov/rest/json/cves/2.0?" + urllib.parse.urlencode({"cveId": cve}), True))
     else:
         urls.append(("https://services.nvd.nist.gov/rest/json/cves/2.0?" + urllib.parse.urlencode({
