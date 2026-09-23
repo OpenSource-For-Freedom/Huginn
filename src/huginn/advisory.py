@@ -274,18 +274,24 @@ def enrich_rows(rows: list[dict[str, str]], client: AdvisoryClient, checked_at: 
 
     for row in rows:
         registry = row.get("registry", "")
-        if registry not in OSV_ECOSYSTEM:
-            continue
-
         known_dependency = row.get("known_dependency", "").lower() == "true"
+        lookup_registry = row.get("dependency_ecosystem", "") if known_dependency else registry
         package = row.get("dependency_name", "") if known_dependency else row.get("package_name", "")
         version = row.get("installed_version", "") if known_dependency else row.get("package_version", "")
+
+        if lookup_registry not in OSV_ECOSYSTEM:
+            row["enrichment_status"] = "PARTIAL"
+            row["enrichment_error"] = "dependency ecosystem unavailable for package-aware advisory lookup"
+            lookup_registry = ""
         if not package or not version:
             row["enrichment_status"] = "SKIPPED"
             row["enrichment_error"] = "missing package or version for advisory lookup"
             continue
 
-        osv, ghsa = client.query_package(registry, package, version)
+        if lookup_registry:
+            osv, ghsa = client.query_package(lookup_registry, package, version)
+        else:
+            osv, ghsa = AdvisoryResult(status="SKIPPED"), AdvisoryResult(status="SKIPPED")
         ids = set(osv.ids) | set(ghsa.ids)
         cves = set(osv.cves) | set(ghsa.cves)
         cwes = set(osv.cwes) | set(ghsa.cwes)
