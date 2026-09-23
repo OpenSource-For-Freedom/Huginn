@@ -63,6 +63,19 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(row["analyst_queue"], "LOW_SIGNAL")
         self.assertIn("non_runtime_path:tests", row["validation_reasons"])
 
+    def test_dist_path_is_not_automatically_noise(self):
+        row = base_row()
+        row.update({
+            "file_path": "package/dist/runtime.js",
+            "validation_kind": "sink_only",
+            "source_to_sink": "false",
+            "confidence": "LOW",
+            "severity": "MEDIUM",
+        })
+        apply_validation([row], previous_compare_status="UNAVAILABLE")
+        self.assertNotEqual(row["validation_state"], "NOISE_LIKELY")
+        self.assertNotIn("non_runtime_path:dist", row["validation_reasons"])
+
     def test_known_dependency_is_known(self):
         row = base_row()
         row.update({
