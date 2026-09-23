@@ -116,6 +116,23 @@ if self.is_secure and encrypt_key:
 The same client explicitly supports the legacy branch with
 `dp_version < "3.1"`; that mode requires `is_openai=False`.
 
+## Vendor security-boundary context
+
+Volcengine's Jeddak AICC documentation describes the Remote Attestation Service as
+validating TEE attestation reports to prove service-code integrity and runtime
+environment safety. Its endpoint SDK documentation also states that
+`GetAttestationBackend` retrieves the remote-attestation report together with the
+secure-channel public key.
+
+This supports treating attestation failure as a meaningful trust-boundary event rather
+than a cosmetic health check.
+
+References:
+
+- https://www.volcengine.com/docs/85010/1414788
+- https://www.volcengine.com/docs/85010/1606206
+- https://www.volcengine.com/docs/85010/1409669
+
 ## Exploitability preconditions
 
 The static chain is relevant when all of the following hold:
