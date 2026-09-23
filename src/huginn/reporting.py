@@ -16,7 +16,7 @@ REVIEW_COLUMNS = [
     "scanner", "scanner_version", "rule_id", "ruleset_hash", "finding_class", "vulnerability_id", "advisory_source",
     "advisory_url", "severity", "confidence", "novelty_state", "cvss_score", "cvss_vector", "cwe",
     "file_path", "start_line", "end_line", "dependency_ecosystem", "dependency_name", "installed_version", "fixed_version",
-    "title", "message", "evidence", "source", "sink", "known_dependency", "suspicious_package",
+    "title", "message", "evidence", "evidence_source", "source", "sink", "known_dependency", "suspicious_package",
     "dedup_status", "dedup_sources", "dedup_identifiers", "dedup_checked_at_utc",
     "dedup_match_basis", "enrichment_status", "enrichment_error",
     "osv_status", "osv_ids", "ghsa_status", "ghsa_ids", "nvd_status", "nvd_ids",
@@ -294,6 +294,18 @@ def normalize_semgrep(payload: dict[str, Any], *, run_id: str, run_started: str,
         suspicious = str(metadata.get("suspicious_package", False)).lower()
         validation_kind = _flat(metadata.get("huginn_validation") or "sink_only")
         source_to_sink = str(metadata.get("huginn_source_to_sink", False)).lower()
+        semgrep_lines = _flat(extra.get("lines") or "")
+        if semgrep_lines.strip().lower() == "requires login":
+            semgrep_lines = ""
+        excerpt = _flat(extra.get("huginn_excerpt") or "")
+        metavars = _flat(extra.get("metavars") or "")
+        evidence = excerpt or semgrep_lines or metavars
+        evidence_source = (
+            "isolated_static_excerpt" if excerpt
+            else "semgrep_lines" if semgrep_lines
+            else "metavars" if metavars
+            else "unavailable"
+        )
         row = _base(run_id, run_started, candidate, artifact, sha256, first_seen)
         row.update({
             "scanner": "semgrep",
@@ -319,7 +331,8 @@ def normalize_semgrep(payload: dict[str, Any], *, run_id: str, run_started: str,
             "fixed_version": "",
             "title": _flat(metadata.get("shortlink") or rule),
             "message": _flat(extra.get("message")),
-            "evidence": _flat(extra.get("lines") or extra.get("metavars") or ""),
+            "evidence": evidence,
+            "evidence_source": evidence_source,
             "source": _flat(metadata.get("huginn_source") or "manual inspection required"),
             "sink": _flat(metadata.get("huginn_sink") or category),
             "known_dependency": "false",
