@@ -2,9 +2,9 @@
 
 ## Status
 
-This implementation establishes the first runnable private capture slice for Huginn.
+Huginn now has a runnable private capture pipeline for npm, PyPI, and RubyGems with static scanning, advisory enrichment, durable queueing, and CSV-first analyst validation.
 
-It is intentionally not a CVE-submission system. It captures evidence, normalizes scanner output, and creates analyst-ready CSV files so findings can be manually verified before any later automation is enabled.
+It remains intentionally non-disclosing: no vendor contact, CNA request, CVE request, or public disclosure is automated.
 
 ## Implemented
 
@@ -12,179 +12,185 @@ It is intentionally not a CVE-submission system. It captures evidence, normalize
 
 Active adapters:
 
-- PyPI latest updates feed for new versions.
-- PyPI newest packages feed for first publishes.
+- npm replication changes follower with durable sequence cursor, packument reconciliation, release-time overlap protection, and exact version deduplication.
+- PyPI latest-updates feed for new versions.
+- PyPI newest-packages feed for first publishes.
 - RubyGems just-updated activity feed for new versions.
 - RubyGems latest activity feed for first publishes.
 
-Release identity is persisted in a local SQLite database using registry + package name + version so completed releases are not rescanned on every poll.
+Release identity is persisted as registry + package name + version.
 
-### Artifact handling
+### Durable queue and retries
 
-For each unseen release Huginn:
+Discovered releases are written to a SQLite-backed job queue before scanning.
 
-1. resolves a published package artifact;
-2. downloads the artifact as opaque bytes;
+The queue provides:
+
+- priority classes;
+- transactional leases;
+- lease expiry and crash recovery;
+- attempt counts;
+- retry state;
+- exponential retry backoff;
+- queue-state counts in run_summary.json.
+
+Validation seeds receive the highest priority, first-publish events are prioritized above normal updates, and completed live releases are not re-enqueued.
+
+### Artifact handling and isolation
+
+For each leased release Huginn:
+
+1. resolves the published artifact;
+2. downloads it as opaque bytes;
 3. calculates SHA-256 during download;
-4. verifies PyPI registry SHA-256 when supplied;
-5. enforces a default 100 MiB compressed artifact limit;
-6. sends the artifact to the isolated unpack/scan boundary.
+4. verifies a registry SHA-256 when available;
+5. enforces compressed and expanded size limits;
+6. parses and extracts only inside the isolated scan boundary.
 
-No package installation or package code execution is performed.
+No install scripts, package imports, tests, package CLIs, or other package code are executed.
 
-### Archive safety
+The rootless Podman scan boundary uses:
 
-Archive parsing happens inside the rootless Podman boundary.
+- no network;
+- read-only container root;
+- all Linux capabilities dropped;
+- no-new-privileges;
+- PID, CPU, memory, and tmpfs limits;
+- no container-engine socket;
+- short-lived source volume;
+- disposable per-scan Trivy DB copy so untrusted scanning cannot modify the trusted persistent DB cache.
 
-The extractor rejects:
+Archive validation rejects absolute paths, parent traversal, links that escape the extraction model, device/FIFO entries, oversized expansion, excessive file counts, and unsupported archive forms.
 
-- absolute paths;
-- parent-directory traversal;
-- tar links;
-- ZIP symlinks;
-- device and FIFO entries;
-- excessive file counts;
-- excessive expanded size;
-- unsupported archive types.
+### Static scanners
 
-RubyGem payload extraction is handled without invoking gem install.
-
-### Static scanning
-
-Pinned initial scanner versions:
+Pinned initial versions:
 
 - Trivy 0.74.0
 - Semgrep 1.177.0
-- Python 3.13 slim image for isolated extraction
+- Python 3.13 slim extraction image
 
-The scanner containers have no network access and run with a read-only root filesystem, dropped capabilities, no-new-privileges, PID limits, CPU limits, memory limits, and short-lived scan storage.
+Trivy records known vulnerable dependency and supported static/misconfiguration findings.
 
-Trivy captures known dependency vulnerabilities and supported misconfiguration findings.
+Semgrep runs a local versioned ruleset and records exact file/line evidence for review.
 
-Semgrep uses a local versioned ruleset so untrusted scan containers do not need network access to fetch rules.
+### Advisory enrichment
 
-### Review CSV
+Every scanned package/version is enriched against:
 
-Each run produces review_findings.csv.
+- OSV.dev;
+- GitHub Global Security Advisories;
+- NVD;
+- Red Hat Security Data.
 
-The CSV includes run identity, package identity, PURL, publication and first-seen timestamps, artifact URL/hash/size, scanner version, rule ID, rule-set hash, finding class, CVE/advisory ID, severity, confidence, novelty state, CVSS, CWE, exact file/line, dependency and fixed-version details, evidence, source/sink description, suspicious-package flag, dedup state, and all manual review fields on the same row.
+Matching remains conservative:
 
-Every row starts in PENDING review state.
+- KNOWN_EXACT: the finding/advisory identifier is directly corroborated or the advisory source returned an exact affected package/version match.
+- POSSIBLE_MATCH: advisory information overlaps the package/version but does not prove the same finding.
+- NO_MATCH: all enabled lookups completed with no matching advisory.
+- LOOKUP_FAILED: one or more required lookups failed and no stronger status applies.
 
-### Scan manifest
+NVD requests use bounded retries/backoff and bounded per-package corroboration to reduce rate-limit pressure.
 
-Each run also produces scan_manifest.csv with one row per attempted package release.
+Raw advisory evidence is preserved in advisory_evidence.json.
 
-It records artifact identity, scan start/finish, scanner exit codes, finding count, final scan status, and errors.
+### Review outputs
 
-This prevents an empty findings CSV from being mistaken for complete clean coverage when packages actually failed to scan.
+Every run creates:
+
+- review_findings.csv
+- scan_manifest.csv
+- advisory_evidence.json
+- run_summary.json
+
+review_findings.csv remains the primary analyst worksheet. It contains package identity, artifact integrity, scanner/rule identity, CVE/advisory data, severity/confidence/novelty, exact file and line, dependency/fixed-version context, evidence, dedup details, and manual validation fields on the same row.
+
+scan_manifest.csv records every attempted package, including failures, so an empty findings CSV cannot be mistaken for successful clean coverage.
 
 ### Manual validation gate
 
-huginn-review-validate checks an edited review_findings.csv.
+huginn-review-validate rejects incomplete analyst decisions.
 
-VALIDATED rows require:
+VALIDATED requires:
 
-- reviewer identity;
-- reviewer decision;
-- reviewer notes;
-- verified timestamp;
+- reviewer;
+- reviewer_decision;
+- reviewer_notes;
+- verified_at_utc;
 - reachability_verified=true;
 - security_boundary_verified=true;
 - affected_version_verified=true;
 - known_advisory_verified=true.
 
-REJECTED rows require a false-positive reason.
+REJECTED requires false_positive_reason.
 
-### GitHub Actions workflow
+### Validation controls
 
-The private workflow supports manual workflow_dispatch capture runs.
+The end-to-end integration workflow scans known-vulnerable historical controls labeled VALIDATION_SEED. These are test controls, not new discoveries.
 
-An hourly schedule is present but is disabled by default. Scheduled capture only runs when the repository variable HUGINN_SCHEDULE_ENABLED is true.
+The verified integration run completed all three control packages and recovered exact CVE matches in the review CSV.
 
-The job requires a self-hosted Linux runner carrying the huginn label and rootless Podman.
+### Live recent-release canary
 
-Each successful run uploads the private review packet as a GitHub Actions artifact with 30-day retention.
+PR CI also scans a small sample of current PyPI/RubyGems updates while bootstrapping the npm follower cursor. It uploads a separate live review packet so current registry behavior and false-positive rates can be inspected independently from seeded controls.
 
-No automatic disclosure or CVE submission is implemented.
+### Legion Runner
 
-## CSV review contract
+Every Huginn GitHub Actions job starts with Wraith Security Legion Runner pinned to commit:
 
-The analyst-facing CSV is the current source of truth for manual validation.
+b459e7433723418301974a1f05098607b7e8d027
 
-Immutable evidence should not be edited. Review fields may be completed during inspection.
+Current mode:
 
-The combination of finding_fingerprint + artifact_sha256 identifies the specific scanner observation against the exact published artifact.
+- egress-policy: audit
+- disable-telemetry: true
 
-Before a row becomes a confirmed vulnerability candidate, the reviewer should verify:
+This gives local CI egress/file-integrity visibility while the baseline is established without unexpectedly blocking required package, GitHub, advisory, or container-registry traffic.
 
-1. exact artifact/version;
-2. exact file and line;
-3. finding semantics;
-4. input/source reachability;
-5. security-sensitive sink or boundary;
-6. real confidentiality, integrity, or availability impact;
-7. whether the affected path ships in the package;
-8. affected-version scope;
-9. whether an existing advisory already covers the same vulnerability.
+### GitHub Actions capture workflow
 
-## Remaining before unattended triage
+The production capture workflow:
 
-### npm follower
+- targets a self-hosted Linux runner labeled huginn;
+- supports npm, PyPI, RubyGems, or all;
+- supports first-publish and update modes;
+- supports optional validation controls;
+- refreshes the trusted Trivy DB outside the untrusted scan containers;
+- uploads each review packet for 30 days.
 
-npm remains the highest-priority missing registry adapter.
+The hourly schedule remains gated by HUGINN_SCHEDULE_ENABLED until the dedicated self-hosted runner and baseline are confirmed.
 
-The current npm replication API no longer supports include_docs on the changes endpoint, so the adapter needs:
+No automatic disclosure or CVE submission exists.
 
-- persistent replication sequence cursor;
-- current changes pagination;
-- packument fetch from registry.npmjs.org;
-- release-time reconciliation;
-- overlap handling for replication/CDN lag;
-- protection against replaying a package's historical versions.
+## Validation result
 
-This should be implemented next rather than approximated with scraping.
+A successful end-to-end control run scanned:
 
-### Advisory enrichment
+- npm lodash 4.17.20
+- npm minimist 1.2.5
+- PyPI Jinja2 2.10.1
 
-Semgrep/static candidates still need explicit cross-reference enrichment against:
+Result:
 
-- OSV.dev;
-- NVD;
-- Red Hat Security Data;
-- GitHub Global Security Advisories.
+- 3 package scans completed;
+- 0 package scan failures;
+- 12 exact CVE review rows recovered;
+- advisory evidence came from OSV/GHSA and was corroborated by NVD/Red Hat where available.
 
-The CSV schema already contains the dedup columns needed for this stage.
+The controls prove the package -> artifact -> isolated scan -> enrichment -> CSV path works. They are not claimed as novel Huginn discoveries.
 
-The enrichment layer must distinguish exact known matches from possible package/version matches. A package-level advisory hit must not automatically suppress a different novel weakness.
+## Remaining operator gates
 
-### Rule maturity
+The code gaps originally called out for npm, advisory enrichment, and durable queue/retry are implemented.
 
-The initial local Semgrep rules are deliberately small and conservative.
+Before unattended disclosure work is considered, the operator should still:
 
-Before scheduled capture is enabled, measure per-rule false-positive rates and replace generic heuristics with language-aware dataflow rules where practical.
+1. run current-release capture for enough cycles to establish Semgrep false-positive rates;
+2. review NO_MATCH static candidates manually;
+3. tune language-aware Semgrep rules from those review outcomes;
+4. confirm the dedicated self-hosted huginn runner is online and stable;
+5. enable HUGINN_SCHEDULE_ENABLED only after that baseline.
 
-### Queue and retry maturity
+The CSV remains intentionally primary. A local TUI is optional ergonomics, not a correctness dependency.
 
-The SQLite state currently tracks release completion/failure. The requirements document's full leased-job queue, retry scheduling, backoff, registry cursors, and retention service remain the target for the next implementation phase.
-
-### Review interface
-
-CSV is intentionally the first review interface.
-
-The planned local TUI can be added after the CSV schema stabilizes so the TUI does not become a second competing source of truth.
-
-## Recommended activation sequence
-
-1. Merge this capture slice.
-2. Configure a dedicated rootless self-hosted runner with the huginn label.
-3. Run manual PyPI capture with a small limit.
-4. Inspect review_findings.csv and scan_manifest.csv.
-5. Tune rules and resource limits from observed false-positive/failure rates.
-6. Run manual RubyGems capture.
-7. Add npm follower support.
-8. Add OSV/NVD/Red Hat/GHSA dedup enrichment.
-9. Run several more manual review cycles.
-10. Only then set HUGINN_SCHEDULE_ENABLED=true.
-
-Automatic CNA/CVE submission remains outside this activation sequence.
+Automatic CNA/CVE submission remains out of scope until the manual evidence and disclosure workflow is proven repeatedly.
