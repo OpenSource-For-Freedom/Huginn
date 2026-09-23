@@ -10,11 +10,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .advisory import AdvisoryClient, enrich_rows
-from .discovery import USER_AGENT, discover, resolve_artifact
+from .discovery import USER_AGENT, discover, previous_release, resolve_artifact
 from .models import Artifact
 from .reporting import MANIFEST_COLUMNS, REVIEW_COLUMNS, normalize_semgrep, normalize_trivy, write_csv
 from .scanner import PodmanScanner
 from .state import StateDB
+from .validation import apply_validation
 
 
 DEFAULT_MAX_ARTIFACT = 100 * 1024 * 1024
@@ -120,6 +121,45 @@ def capture_registry(
                 # Networked advisory lookups happen in the trusted controller after the
                 # untrusted no-network scanner has exited.
                 enrich_rows(rows, advisory, checked_at=utc_now())
+
+                previous_version = ""
+                previous_keys: set[tuple[str, str]] = set()
+                previous_status = "NOT_NEEDED"
+                previous_error = ""
+
+                semgrep_candidates = [
+                    row for row in rows
+                    if row.get("scanner") == "semgrep"
+                    and row.get("dedup_status") in {"NO_MATCH", "POSSIBLE_MATCH", "LOOKUP_FAILED"}
+                ]
+                if semgrep_candidates:
+                    try:
+                        previous = previous_release(candidate)
+                        if previous is None:
+                            previous_status = "UNAVAILABLE"
+                        else:
+                            previous_version = previous.version
+                            previous_artifact = resolve_artifact(previous)
+                            previous_suffix = "".join(Path(previous_artifact.filename).suffixes)[-20:] or ".bin"
+                            previous_path = Path(td) / f"previous{previous_suffix}"
+                            download(previous_artifact, previous_path, max_artifact_bytes)
+                            previous_outcome = scanner.scan(previous_path)
+                            previous_keys = {
+                                (str(item.get("check_id") or ""), str(item.get("path") or ""))
+                                for item in (previous_outcome.semgrep.get("results") or [])
+                            }
+                            previous_status = "COMPLETE"
+                    except Exception as exc:
+                        previous_status = "FAILED"
+                        previous_error = f"{type(exc).__name__}: {exc}"[:1000]
+
+                apply_validation(
+                    rows,
+                    previous_version=previous_version,
+                    previous_keys=previous_keys,
+                    previous_compare_status=previous_status,
+                    previous_compare_error=previous_error,
+                )
                 findings.extend(rows)
 
                 manifest["trivy_exit_code"] = str(outcome.trivy_exit_code)
@@ -214,6 +254,18 @@ def main() -> None:
         "possible_match_count": sum(1 for row in all_findings if row.get("dedup_status") == "POSSIBLE_MATCH"),
         "known_exact_count": sum(1 for row in all_findings if row.get("dedup_status") == "KNOWN_EXACT"),
         "lookup_failed_count": sum(1 for row in all_findings if row.get("dedup_status") == "LOOKUP_FAILED"),
+        "high_value_manual_candidate_count": sum(
+            1 for row in all_findings if row.get("validation_state") == "HIGH_VALUE_MANUAL_CANDIDATE"
+        ),
+        "needs_reachability_review_count": sum(
+            1 for row in all_findings if row.get("validation_state") == "NEEDS_REACHABILITY_REVIEW"
+        ),
+        "noise_likely_count": sum(
+            1 for row in all_findings if row.get("validation_state") == "NOISE_LIKELY"
+        ),
+        "static_dataflow_count": sum(
+            1 for row in all_findings if row.get("reachability_state") == "STATIC_DATAFLOW"
+        ),
         "package_scan_count": len(all_manifests),
         "failed_package_scans": sum(1 for row in all_manifests if row.get("scan_status") == "FAILED"),
         "review_csv": "review_findings.csv",
