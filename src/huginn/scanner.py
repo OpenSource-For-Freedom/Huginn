@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import uuid
@@ -23,7 +24,7 @@ class PodmanScanner:
         trivy_image: str = "docker.io/aquasec/trivy:0.74.0",
         semgrep_image: str = "docker.io/semgrep/semgrep:1.177.0",
         unpack_image: str = "docker.io/library/python:3.13-slim",
-        trivy_cache_volume: str = "huginn-trivy-cache",
+        trivy_cache_volume: str | None = None,
         timeout_seconds: int = 600,
     ):
         self.rules_file = rules_file.resolve()
@@ -31,7 +32,11 @@ class PodmanScanner:
         self.trivy_image = trivy_image
         self.semgrep_image = semgrep_image
         self.unpack_image = unpack_image
-        self.trivy_cache_volume = trivy_cache_volume
+        self.trivy_cache_volume = (
+            trivy_cache_volume
+            or os.environ.get("HUGINN_TRIVY_CACHE_VOLUME")
+            or "huginn-trivy-cache"
+        )
         self.timeout_seconds = timeout_seconds
 
     @property
