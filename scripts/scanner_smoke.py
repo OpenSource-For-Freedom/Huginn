@@ -49,7 +49,7 @@ def main() -> None:
         }
 
         expected_rule = "huginn.generic.command-execution"
-        expected_dynamic_rule = "huginn.generic.dynamic-eval"
+        expected_dynamic_rule = "huginn.python.dynamic-eval-sink"
         expected_taint_rule = "huginn.python.tainted-eval"
         expected_cve = "CVE-2024-56326"
 
@@ -82,7 +82,7 @@ def main() -> None:
                 f"Semgrep failed to detect {expected_dynamic_rule}; got {sorted(semgrep_ids)}"
             )
         if any(str(item.get("path") or "").endswith("safe_db.py") for item in dynamic_results):
-            raise SystemExit("Generic dynamic-eval rule incorrectly matched member method db.exec(sql)")
+            raise SystemExit("Dynamic-eval rules incorrectly matched member method db.exec(sql)")
         if not any(
             rule_id == expected_taint_rule or rule_id.endswith(f".{expected_taint_rule}")
             for rule_id in semgrep_ids
