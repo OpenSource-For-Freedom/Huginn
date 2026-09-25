@@ -39,9 +39,13 @@ TARGETS = [
         "url": "https://files.pythonhosted.org/packages/e5/50/8ecf37e98da343a58e9b9bdfb43fe8cc96b732a8b5098ce67535f57e72ca/search_gateway-1.0.3.post20260923.tar.gz",
         "sha256": "1dceb87b9d92d72af87ad23265b8b24a8d962d40ad4ad57195bfb376d51c769b",
         "sections": [
-            {"suffix": "search_gateway/static/assets/index-CT4xRkVZ.js", "start": 270, "end": 295},
+            {"suffix": "search_gateway/static/assets/index-CT4xRkVZ.js", "start": 1, "end": 320},
         ],
-        "terms": ["innerHTML", "dangerouslySetInnerHTML", "document.write", "sanitize", "DOMPurify"],
+        "terms": [
+            "innerHTML", "dangerouslySetInnerHTML", "document.write", "sanitize", "DOMPurify",
+            "textContent", "replaceChildren", "panelHtml", "escape", "vendor_name",
+            "keyword", "snippet", "message", "api_key", "logs"
+        ],
     },
 ]
 
