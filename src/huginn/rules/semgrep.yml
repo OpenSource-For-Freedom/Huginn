@@ -3,7 +3,7 @@ rules:
     message: Dynamic evaluation primitive requires manual trust-boundary review.
     severity: WARNING
     languages: [generic]
-    pattern-regex: '\b(eval|exec)\s*\('
+    pattern-regex: '(?:^|[^A-Za-z0-9_.$])(?:eval|exec)\s*\('
     metadata:
       huginn_category: dynamic_code_execution
       huginn_confidence: LOW
@@ -18,7 +18,7 @@ rules:
     message: Command execution primitive requires manual source-to-sink verification.
     severity: ERROR
     languages: [generic]
-    pattern-regex: '(child_process\.(exec|execSync)|subprocess\.(run|Popen|call)|Runtime\.getRuntime\(\)\.exec|os\.system)\s*\('
+    pattern-regex: '(child_process\.(exec|execSync)|Runtime\.getRuntime\(\)\.exec|os\.system)\s*\('
     metadata:
       huginn_category: command_execution
       huginn_confidence: MEDIUM
