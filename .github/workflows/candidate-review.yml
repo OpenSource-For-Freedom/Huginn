@@ -73,6 +73,12 @@ jobs:
       - name: Trace Volcengine secure channel
         run: python scripts/trace_volcengine_jsc.py
 
+      - name: Recheck Volcengine public advisories
+        env:
+          HUGINN_GITHUB_TOKEN: ${{ github.token }}
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: python scripts/recheck_volcengine_advisories.py
+
       - name: Upload candidate review packet
         uses: actions/upload-artifact@v4
         with:
