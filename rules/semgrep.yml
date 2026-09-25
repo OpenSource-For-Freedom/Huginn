@@ -3,7 +3,7 @@ rules:
     message: Dynamic evaluation primitive requires manual trust-boundary review.
     severity: WARNING
     languages: [generic]
-    pattern-regex: '\b(eval|exec)\s*\('
+    pattern-regex: '(?:^|[^A-Za-z0-9_.$])(?:eval|exec)\s*\('
     metadata:
       huginn_category: dynamic_code_execution
       huginn_confidence: LOW
@@ -18,7 +18,7 @@ rules:
     message: Command execution primitive requires manual source-to-sink verification.
     severity: ERROR
     languages: [generic]
-    pattern-regex: '(child_process\.(exec|execSync)|subprocess\.(run|Popen|call)|Runtime\.getRuntime\(\)\.exec|os\.system)\s*\('
+    pattern-regex: '(child_process\.(exec|execSync)|Runtime\.getRuntime\(\)\.exec|os\.system)\s*\('
     metadata:
       huginn_category: command_execution
       huginn_confidence: MEDIUM
@@ -72,6 +72,53 @@ rules:
       huginn_source: static indicator only
       huginn_sink: suspicious package behavior
       suspicious_package: true
+
+  - id: huginn.python.shell-command-execution
+    message: Python subprocess explicitly invokes a shell and requires command provenance review.
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: subprocess.check_call(..., shell=True, ...)
+          - pattern: subprocess.check_output(..., shell=True, ...)
+    metadata:
+      huginn_category: command_execution
+      huginn_confidence: MEDIUM
+      huginn_validation: sink_only
+      huginn_source_to_sink: false
+      huginn_source: shell command data provenance must be established manually
+      huginn_sink: Python subprocess with shell=True
+      cwe: CWE-78
+      suspicious_package: false
+
+  - id: huginn.python.network-response-unsafe-deserialization
+    message: Network response data reaches an unsafe Python deserialization primitive.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - pattern: requests.get(...)
+      - pattern: requests.post(...)
+      - pattern: requests.request(...)
+      - pattern: httpx.get(...)
+      - pattern: httpx.post(...)
+      - pattern: httpx.request(...)
+      - pattern: urllib.request.urlopen(...)
+    pattern-sinks:
+      - pattern: pickle.loads(...)
+      - pattern: yaml.unsafe_load(...)
+    metadata:
+      huginn_category: unsafe_deserialization
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: network response data
+      huginn_sink: unsafe deserialization
+      cwe: CWE-502
+      suspicious_package: false
 
   - id: huginn.python.tainted-eval
     message: Untrusted Python input reaches eval/exec.

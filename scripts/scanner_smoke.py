@@ -18,6 +18,9 @@ def main() -> None:
 
         files = {
             "fixture/vuln.py": b"import os\ndef run():\n    user_input = input()\n    os.system(user_input)\n    eval(user_input)\n",
+            "fixture/network_pickle.py": b"import pickle\nimport requests\ndef load_remote(url):\n    response = requests.get(url)\n    return pickle.loads(response.content)\n",
+            "fixture/noise.js": b"async function migrate(db, sql) { await db.exec(sql); }\n",
+            "fixture/safe_subprocess.py": b"import subprocess\ndef run(repo):\n    return subprocess.run(['git', '-C', repo, 'status'], check=True)\n",
             "fixture/requirements.txt": b"jinja2==3.1.4\n",
         }
 
@@ -49,6 +52,7 @@ def main() -> None:
 
         expected_rule = "huginn.generic.command-execution"
         expected_taint_rule = "huginn.python.tainted-eval"
+        expected_network_deserialization_rule = "huginn.python.network-response-unsafe-deserialization"
         expected_cve = "CVE-2024-56326"
 
         report = {
@@ -61,6 +65,7 @@ def main() -> None:
             "trivy_vulnerability_ids": sorted(trivy_ids),
             "expected_semgrep_rule": expected_rule,
             "expected_semgrep_taint_rule": expected_taint_rule,
+            "expected_network_deserialization_rule": expected_network_deserialization_rule,
             "expected_trivy_cve": expected_cve,
         }
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -76,6 +81,32 @@ def main() -> None:
             raise SystemExit(
                 f"Semgrep failed to detect {expected_taint_rule}; got {sorted(semgrep_ids)}"
             )
+        if not any(
+            rule_id == expected_network_deserialization_rule
+            or rule_id.endswith(f".{expected_network_deserialization_rule}")
+            for rule_id in semgrep_ids
+        ):
+            raise SystemExit(
+                "Semgrep failed to detect network-response unsafe deserialization; "
+                f"got {sorted(semgrep_ids)}"
+            )
+
+        dynamic_eval_noise = [
+            item for item in outcome.semgrep.get("results") or []
+            if str(item.get("path") or "").endswith("noise.js")
+            and str(item.get("check_id") or "").endswith("huginn.generic.dynamic-eval")
+        ]
+        if dynamic_eval_noise:
+            raise SystemExit("Generic dynamic-eval rule incorrectly matched db.exec(...)")
+
+        safe_subprocess_noise = [
+            item for item in outcome.semgrep.get("results") or []
+            if str(item.get("path") or "").endswith("safe_subprocess.py")
+            and str(item.get("check_id") or "").endswith("huginn.generic.command-execution")
+        ]
+        if safe_subprocess_noise:
+            raise SystemExit("Generic command rule incorrectly matched safe subprocess argv execution")
+
         if not any("os.system(user_input)" in value for value in excerpts):
             raise SystemExit(
                 "Scanner failed to attach isolated static source excerpts to Semgrep findings"
