@@ -116,7 +116,12 @@ No exploit payload was created or executed during validation.
 
 Hunt 002 package-aware OSV and GHSA checks returned no match for `volcengine-python-sdk-aicc 0.0.41`.
 
-A fresh advisory recheck is part of the candidate-review workflow. This document must be updated if an existing advisory is found.
+A fresh package-aware advisory recheck completed on September 25, 2026:
+- OSV: `NO_MATCH`
+- GHSA: `NO_MATCH`
+- returned public CVE identifiers: none
+
+The package-aware novelty check completed without lookup errors. This does not replace vendor confirmation or broader coordinated-disclosure review.
 
 ## Evidence quality
 
