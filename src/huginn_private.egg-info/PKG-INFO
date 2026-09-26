@@ -1,7 +1,0 @@
-Metadata-Version: 2.4
-Name: huginn-private
-Version: 0.1.0
-Summary: Private static package reconnaissance and review capture
-Author: OpenSource-For-Freedom
-License: Private
-Requires-Python: >=3.13
