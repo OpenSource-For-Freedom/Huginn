@@ -1,0 +1,3 @@
+[console_scripts]
+huginn-capture = huginn.capture:main
+huginn-review-validate = huginn.review_validate:main
