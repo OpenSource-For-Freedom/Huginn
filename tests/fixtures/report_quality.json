@@ -1,0 +1,9 @@
+[
+  {"name":"partial_sources","row":{"novelty_state":"novel","osv_status":"NO_MATCH","ghsa_status":"NO_MATCH","nvd_status":"SKIPPED","redhat_status":"SKIPPED"},"expected":{"reported_novelty":"UNCONFIRMED","advisory_coverage":"INCOMPLETE","unchecked_sources":"nvd;redhat"}},
+  {"name":"checked_is_not_novel","row":{"novelty_state":"novel","osv_status":"NO_MATCH","ghsa_status":"NO_MATCH","nvd_status":"NO_MATCH","redhat_status":"NO_MATCH"},"expected":{"reported_novelty":"UNCONFIRMED","advisory_coverage":"CHECKED_SOURCES_ONLY"}},
+  {"name":"reversed_prerelease","row":{"registry":"pypi","package_version":"0.1.0a3","previous_version":"0.1.0b7","previous_compare_status":"COMPLETE","version_delta":"INTRODUCED_OR_MOVED"},"expected":{"version_order":"UNVERIFIED","reported_version_delta":"UNKNOWN"}},
+  {"name":"numeric_reversal","row":{"package_version":"1.9","previous_version":"1.10","previous_compare_status":"COMPLETE","version_delta":"INTRODUCED_OR_MOVED"},"expected":{"version_order":"INVALID_BASELINE","reported_version_delta":"UNKNOWN"}},
+  {"name":"valid_numeric_order","row":{"package_version":"1.10","previous_version":"1.9","previous_compare_status":"COMPLETE","version_delta":"PRESENT_IN_PREVIOUS"},"expected":{"version_order":"OLDER_BASELINE","reported_version_delta":"PRESENT_IN_PREVIOUS"}},
+  {"name":"failed_comparison","row":{"package_version":"2.0","previous_version":"1.0","previous_compare_status":"FAILED","version_delta":"INTRODUCED_OR_MOVED"},"expected":{"reported_version_delta":"UNKNOWN"}},
+  {"name":"known_dependency","row":{"dedup_status":"KNOWN_EXACT"},"expected":{"report_status":"DEPENDENCY_APPLICABILITY_REVIEW","reported_novelty":"KNOWN_ADVISORY_MATCH"}}
+]
