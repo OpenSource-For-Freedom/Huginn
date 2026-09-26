@@ -127,11 +127,43 @@ jobs:
                           "excerpt": excerpt,
                       })
 
+          # Deep inspection of the bundled secure-channel implementation without importing it.
+          volc_blob = cache[(
+              "https://files.pythonhosted.org/packages/ce/13/2064b8ff62237f906b662a4e7bb0b7582313c8d47abf3960447d0ec8ae8c/volcengine_python_sdk_aicc-0.0.41.tar.gz",
+              "2aae4691780916114ad477ebbb6c09eaff2c597b1a60b02c8905efd4b70944ab",
+          )]
+          secure_channel = []
+          with tarfile.open(fileobj=io.BytesIO(volc_blob), mode="r:gz") as tf:
+              for member in tf.getmembers():
+                  name = PurePosixPath(member.name).as_posix()
+                  if not member.isfile() or not name.endswith(".py"):
+                      continue
+                  if "jeddak_secure_channel" not in name and not name.endswith("aicc_inference.py"):
+                      continue
+                  fh = tf.extractfile(member)
+                  if fh is None:
+                      continue
+                  source = fh.read().decode("utf-8", "replace")
+                  lines = source.splitlines()
+                  terms = ("encrypt_with_response", "def decrypt", "attest", "verify", "AES", "GCM", "base_url")
+                  for lineno, line in enumerate(lines, 1):
+                      if any(term.lower() in line.lower() for term in terms):
+                          start = max(1, lineno - 8)
+                          end = min(len(lines), lineno + 12)
+                          excerpt = "\n".join(f"{i:5d}: {lines[i-1]}" for i in range(start, end + 1))
+                          secure_channel.append({"member": name, "line": lineno, "excerpt": excerpt})
+
+          review_doc = {"findings": output, "secure_channel": secure_channel}
           with open("candidate_review.json", "w", encoding="utf-8") as fh:
-              json.dump(output, fh, indent=2, ensure_ascii=False)
+              json.dump(review_doc, fh, indent=2, ensure_ascii=False)
           for item in output:
               print("\n" + "=" * 90)
               print(item["package"], item["member"], "line", item["line"])
+              print(item["excerpt"])
+          print("\nSECURE CHANNEL STATIC MATCHES")
+          for item in secure_channel:
+              print("\n" + "-" * 90)
+              print(item["member"], "line", item["line"])
               print(item["excerpt"])
           PY
 
