@@ -145,7 +145,7 @@ jobs:
                       continue
                   source = fh.read().decode("utf-8", "replace")
                   lines = source.splitlines()
-                  terms = ("encrypt_with_response", "def decrypt", "attest", "verify", "AES", "GCM", "base_url")
+                  terms = ("encrypt_with_response", "def decrypt", "attest", "attest_must", "verify", "AES", "GCM", "base_url", "ClientConfig")
                   for lineno, line in enumerate(lines, 1):
                       if any(term.lower() in line.lower() for term in terms):
                           start = max(1, lineno - 8)
