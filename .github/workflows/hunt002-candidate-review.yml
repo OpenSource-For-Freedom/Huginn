@@ -174,10 +174,74 @@ jobs:
               print(item["excerpt"])
           PY
 
+      - name: Establish Volcengine affected version scope
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib, io, json, tarfile, urllib.request
+
+          req = urllib.request.Request(
+              "https://pypi.org/pypi/volcengine-python-sdk-aicc/json",
+              headers={"User-Agent":"Huginn-static-review/1"},
+          )
+          with urllib.request.urlopen(req, timeout=30) as r:
+              meta = json.load(r)
+
+          rows = []
+          for version, files in (meta.get("releases") or {}).items():
+              sdist = next((item for item in files if item.get("packagetype") == "sdist"), None)
+              if not sdist:
+                  continue
+              url = sdist["url"]
+              expected = (sdist.get("digests") or {}).get("sha256") or ""
+              try:
+                  with urllib.request.urlopen(
+                      urllib.request.Request(url, headers={"User-Agent":"Huginn-static-review/1"}),
+                      timeout=30,
+                  ) as r:
+                      blob = r.read()
+                  digest = hashlib.sha256(blob).hexdigest()
+                  if expected and digest != expected:
+                      raise ValueError("sha256 mismatch")
+
+                  pickle_path = False
+                  fail_open = False
+                  with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tf:
+                      for member in tf.getmembers():
+                          if not member.isfile() or not member.name.endswith(".py"):
+                              continue
+                          fh = tf.extractfile(member)
+                          if fh is None:
+                              continue
+                          src = fh.read().decode("utf-8", "replace")
+                          if member.name.endswith("deepseek_inference_client.py"):
+                              pickle_path = "pickle.loads(encrypt_key.decrypt" in src
+                          if member.name.endswith("jeddak_secure_channel/ra.py"):
+                              fail_open = "attest_must: bool = False" in src
+                  rows.append({
+                      "version": version,
+                      "upload_time": sdist.get("upload_time_iso_8601") or sdist.get("upload_time"),
+                      "sha256": digest,
+                      "pickle_response_deserialization": pickle_path,
+                      "attestation_fail_open_default": fail_open,
+                      "combined_candidate": pickle_path and fail_open,
+                  })
+              except Exception as exc:
+                  rows.append({"version":version,"error":f"{type(exc).__name__}: {exc}"})
+
+          rows.sort(key=lambda row: row.get("upload_time") or "")
+          with open("version_scope.json","w",encoding="utf-8") as fh:
+              json.dump(rows, fh, indent=2)
+          print(json.dumps(rows, indent=2))
+          PY
+
       - name: Upload review evidence
         uses: actions/upload-artifact@v4
         with:
           name: hunt-002-candidate-review-${{ github.run_id }}
-          path: candidate_review.json
+          path: |
+            candidate_review.json
+            version_scope.json
           retention-days: 30
           if-no-files-found: error
