@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from huginn.reporting import REVIEW_COLUMNS  # noqa: E402
 from huginn.review_validate import validate  # noqa: E402
+from huginn.report_quality import write_quality_report  # noqa: E402
 
 SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
 ADVISORY_ID = re.compile(r"^(CVE-\d{4}-\d{4,}|GHSA(-[23456789cfghjmpqrvwx]{4}){3})$")
@@ -242,6 +243,7 @@ def update(packet: Path, ledger_dir: Path, hunt_id: str, now: str | None = None)
     }
     log_rows = [r for r in log_rows if r.get("hunt_id") != hunt_id] + [log_entry]
     write_rows(log_path, RUN_LOG_COLUMNS, log_rows)
+    write_quality_report(ledger_dir, queue_rows)
 
     for message in rejected:
         print(f"ledger: skipped incomplete row: {message}")

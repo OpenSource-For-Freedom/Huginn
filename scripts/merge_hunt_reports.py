@@ -3,8 +3,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from huginn.report_quality import write_quality_report
 
 
 def read_csvs(root: Path, filename: str) -> tuple[list[str], list[dict[str, str]]]:
@@ -112,6 +116,7 @@ def main() -> None:
         "automatic_cve_submission": False,
     }
     args.output_root.mkdir(parents=True, exist_ok=True)
+    write_quality_report(args.output_root, review_rows)
     (args.output_root / "matrix_summary.json").write_text(
         json.dumps(aggregate, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

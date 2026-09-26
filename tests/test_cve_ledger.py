@@ -107,6 +107,10 @@ class CveLedgerTests(unittest.TestCase):
             queue = read_rows(root / "ledger" / "candidate_queue.csv")
             self.assertEqual([r["finding_fingerprint"] for r in queue], ["f" * 64])
             self.assertEqual(queue[0]["review_status"], "PENDING")
+            quality = read_rows(root / "ledger" / "report_quality.csv")
+            self.assertEqual(len(quality), 1)
+            self.assertEqual(quality[0]["reported_novelty"], "UNCONFIRMED")
+            self.assertEqual(quality[0]["report_status"], "MANUAL_REVIEW_REQUIRED")
 
     def test_repeat_sightings_update_counts_and_run_log_is_complete(self):
         with tempfile.TemporaryDirectory() as td:
