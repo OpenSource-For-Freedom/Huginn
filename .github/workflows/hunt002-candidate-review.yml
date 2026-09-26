@@ -1,0 +1,130 @@
+name: Hunt 002 Candidate Review
+
+on:
+  push:
+    branches:
+      - feature/review-hunt002
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          file-integrity: auto
+          ebpf: auto
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Extract exact published source excerpts
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib, io, json, tarfile, urllib.request
+          from pathlib import PurePosixPath
+
+          TARGETS = [
+              {
+                  "name":"archcheck 0.26.0",
+                  "url":"https://files.pythonhosted.org/packages/c3/3b/edce9bd91eec2de5bf7661e3bfd93703087e6d00c41f76e566af2083e84c/archcheck-0.26.0.tar.gz",
+                  "sha256":"e6864a52e1bf8f549efb86ff7c455943fab7da06f3f59e9b6dbfb27443018830",
+                  "path_suffix":"src/archcheck/semantic.py",
+                  "lines":[997],
+              },
+              {
+                  "name":"gitomb 0.1.0",
+                  "url":"https://files.pythonhosted.org/packages/41/0b/50b59ed975c65790b2a3d177919f1aee5732e402e0c79c2a8337a8dd0ae5/gitomb-0.1.0.tar.gz",
+                  "sha256":"0e1a76b21de6bad958b8b18d92a859c0168e4a0ca0eaa1820df90355867d4bf6",
+                  "path_suffix":"src/gitomb/git.py",
+                  "lines":[14],
+              },
+              {
+                  "name":"volcengine-python-sdk-aicc 0.0.41",
+                  "url":"https://files.pythonhosted.org/packages/ce/13/2064b8ff62237f906b662a4e7bb0b7582313c8d47abf3960447d0ec8ae8c/volcengine_python_sdk_aicc-0.0.41.tar.gz",
+                  "sha256":"2aae4691780916114ad477ebbb6c09eaff2c597b1a60b02c8905efd4b70944ab",
+                  "path_suffix":"bytedance/volcengine_aicc_sdk/asr_websocket_client.py",
+                  "lines":[458],
+              },
+              {
+                  "name":"volcengine-python-sdk-aicc 0.0.41",
+                  "url":"https://files.pythonhosted.org/packages/ce/13/2064b8ff62237f906b662a4e7bb0b7582313c8d47abf3960447d0ec8ae8c/volcengine_python_sdk_aicc-0.0.41.tar.gz",
+                  "sha256":"2aae4691780916114ad477ebbb6c09eaff2c597b1a60b02c8905efd4b70944ab",
+                  "path_suffix":"bytedance/volcengine_aicc_sdk/deepseek_inference_client.py",
+                  "lines":[277],
+              },
+              {
+                  "name":"webteam-agents 0.2.0",
+                  "url":"https://files.pythonhosted.org/packages/ed/7f/2bbac34bee9f550dbd24fe721f0713ef7ad2337c070511cd2571a6250648/webteam_agents-0.2.0.tar.gz",
+                  "sha256":"42f0300c7fe6bb97b5574640ff50b5747f9eee7bdc2f4a9ea71998b47eac75e7",
+                  "path_suffix":"src/webteam/project.py",
+                  "lines":[151],
+              },
+          ]
+
+          cache = {}
+          output = []
+          for target in TARGETS:
+              key = (target["url"], target["sha256"])
+              if key not in cache:
+                  req = urllib.request.Request(target["url"], headers={"User-Agent":"Huginn-static-review/1"})
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      blob = r.read()
+                  digest = hashlib.sha256(blob).hexdigest()
+                  if digest != target["sha256"]:
+                      raise SystemExit(f"sha256 mismatch for {target['name']}: {digest}")
+                  cache[key] = blob
+              blob = cache[key]
+
+              with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tf:
+                  member = next(
+                      (m for m in tf.getmembers()
+                       if m.isfile() and PurePosixPath(m.name).as_posix().endswith(target["path_suffix"])),
+                      None,
+                  )
+                  if member is None:
+                      raise SystemExit(f"missing {target['path_suffix']} in {target['name']}")
+                  f = tf.extractfile(member)
+                  assert f is not None
+                  text = f.read().decode("utf-8", "replace")
+                  lines = text.splitlines()
+                  for line_no in target["lines"]:
+                      start = max(1, line_no - 25)
+                      end = min(len(lines), line_no + 25)
+                      excerpt = "\n".join(f"{i:5d}: {lines[i-1]}" for i in range(start, end + 1))
+                      output.append({
+                          "package": target["name"],
+                          "artifact_sha256": target["sha256"],
+                          "member": member.name,
+                          "line": line_no,
+                          "excerpt": excerpt,
+                      })
+
+          with open("candidate_review.json", "w", encoding="utf-8") as fh:
+              json.dump(output, fh, indent=2, ensure_ascii=False)
+          for item in output:
+              print("\n" + "=" * 90)
+              print(item["package"], item["member"], "line", item["line"])
+              print(item["excerpt"])
+          PY
+
+      - name: Upload review evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hunt-002-candidate-review-${{ github.run_id }}
+          path: candidate_review.json
+          retention-days: 30
+          if-no-files-found: error
