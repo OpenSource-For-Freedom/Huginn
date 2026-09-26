@@ -46,6 +46,13 @@ jobs:
                   "lines":[997],
               },
               {
+                  "name":"archcheck 0.26.0",
+                  "url":"https://files.pythonhosted.org/packages/c3/3b/edce9bd91eec2de5bf7661e3bfd93703087e6d00c41f76e566af2083e84c/archcheck-0.26.0.tar.gz",
+                  "sha256":"e6864a52e1bf8f549efb86ff7c455943fab7da06f3f59e9b6dbfb27443018830",
+                  "path_suffix":"src/archcheck/templates/report.html",
+                  "lines":[315,522,546,554,575,817,835,848,875,886,894,898],
+              },
+              {
                   "name":"gitomb 0.1.0",
                   "url":"https://files.pythonhosted.org/packages/41/0b/50b59ed975c65790b2a3d177919f1aee5732e402e0c79c2a8337a8dd0ae5/gitomb-0.1.0.tar.gz",
                   "sha256":"0e1a76b21de6bad958b8b18d92a859c0168e4a0ca0eaa1820df90355867d4bf6",
@@ -64,7 +71,14 @@ jobs:
                   "url":"https://files.pythonhosted.org/packages/ce/13/2064b8ff62237f906b662a4e7bb0b7582313c8d47abf3960447d0ec8ae8c/volcengine_python_sdk_aicc-0.0.41.tar.gz",
                   "sha256":"2aae4691780916114ad477ebbb6c09eaff2c597b1a60b02c8905efd4b70944ab",
                   "path_suffix":"bytedance/volcengine_aicc_sdk/deepseek_inference_client.py",
-                  "lines":[277],
+                  "lines":[35,90,160,220,277],
+              },
+              {
+                  "name":"bluet-mcp 0.4.2",
+                  "url":"https://registry.npmjs.org/bluet-mcp/-/bluet-mcp-0.4.2.tgz",
+                  "sha256":"84c91bbe07e9c8c47d9bf448d3d581f3c31ff68dece2dc370232be6ab5843c9f",
+                  "path_suffix":"package/mcp.mjs",
+                  "lines":[450,471,472,525,526,558,560],
               },
               {
                   "name":"webteam-agents 0.2.0",
