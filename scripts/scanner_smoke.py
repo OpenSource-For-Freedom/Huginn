@@ -22,6 +22,7 @@ def main() -> None:
             "fixture/noise.js": b"async function migrate(db, sql) { await db.exec(sql); }\n",
             "fixture/safe_subprocess.py": b"import subprocess\ndef run(repo):\n    return subprocess.run(['git', '-C', repo, 'status'], check=True)\n",
             "fixture/requirements.txt": b"jinja2==3.1.4\n",
+            "fixture/safe_db.py": b"def store(db, sql):\n    db.exec(sql)\n",
         }
 
         with tarfile.open(archive, "w:gz") as tf:
@@ -51,6 +52,7 @@ def main() -> None:
         }
 
         expected_rule = "huginn.generic.command-execution"
+        expected_dynamic_rule = "huginn.python.dynamic-eval-sink"
         expected_taint_rule = "huginn.python.tainted-eval"
         expected_network_deserialization_rule = "huginn.python.network-response-unsafe-deserialization"
         expected_cve = "CVE-2024-56326"
@@ -64,6 +66,7 @@ def main() -> None:
             "trivy_exit_code": outcome.trivy_exit_code,
             "trivy_vulnerability_ids": sorted(trivy_ids),
             "expected_semgrep_rule": expected_rule,
+            "expected_semgrep_dynamic_rule": expected_dynamic_rule,
             "expected_semgrep_taint_rule": expected_taint_rule,
             "expected_network_deserialization_rule": expected_network_deserialization_rule,
             "expected_trivy_cve": expected_cve,
@@ -74,6 +77,17 @@ def main() -> None:
             raise SystemExit(
                 f"Semgrep failed to detect {expected_rule}; got {sorted(semgrep_ids)}"
             )
+        dynamic_results = [
+            item for item in outcome.semgrep.get("results") or []
+            if str(item.get("check_id") or "") == expected_dynamic_rule
+            or str(item.get("check_id") or "").endswith(f".{expected_dynamic_rule}")
+        ]
+        if not dynamic_results:
+            raise SystemExit(
+                f"Semgrep failed to detect {expected_dynamic_rule}; got {sorted(semgrep_ids)}"
+            )
+        if any(str(item.get("path") or "").endswith("safe_db.py") for item in dynamic_results):
+            raise SystemExit("Dynamic-eval rules incorrectly matched member method db.exec(sql)")
         if not any(
             rule_id == expected_taint_rule or rule_id.endswith(f".{expected_taint_rule}")
             for rule_id in semgrep_ids

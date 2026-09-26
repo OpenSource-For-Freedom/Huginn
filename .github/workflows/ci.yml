@@ -100,5 +100,5 @@ jobs:
             -v "$HUGINN_TRIVY_CACHE_VOLUME:/cache:rw,Z" \
             "$HUGINN_TRIVY_IMAGE" --cache-dir /cache image --download-db-only
           test -f "$HUGINN_TRIVY_CACHE_VOLUME/db/trivy.db"
-      - name: Validate Semgrep and Trivy engines
+      - name: Validate scanner engines and rule regressions
         run: python scripts/scanner_smoke.py

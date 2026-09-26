@@ -1,16 +1,51 @@
 rules:
-  - id: huginn.generic.dynamic-eval
-    message: Dynamic evaluation primitive requires manual trust-boundary review.
+  - id: huginn.python.dynamic-eval-sink
+    message: Python dynamic evaluation primitive requires manual trust-boundary review.
     severity: WARNING
-    languages: [generic]
-    pattern-regex: '(?:^|[^A-Za-z0-9_.$])(?:eval|exec)\s*\('
+    languages: [python]
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
     metadata:
       huginn_category: dynamic_code_execution
       huginn_confidence: LOW
       huginn_validation: sink_only
       huginn_source_to_sink: false
       huginn_source: attacker-controlled input must be established manually
-      huginn_sink: dynamic evaluation
+      huginn_sink: Python dynamic evaluation
+      cwe: CWE-95
+      suspicious_package: false
+
+  - id: huginn.javascript.dynamic-eval-sink
+    message: JavaScript dynamic evaluation primitive requires manual trust-boundary review.
+    severity: WARNING
+    languages: [javascript, typescript]
+    pattern: eval(...)
+    metadata:
+      huginn_category: dynamic_code_execution
+      huginn_confidence: LOW
+      huginn_validation: sink_only
+      huginn_source_to_sink: false
+      huginn_source: attacker-controlled input must be established manually
+      huginn_sink: JavaScript dynamic evaluation
+      cwe: CWE-95
+      suspicious_package: false
+
+  - id: huginn.ruby.dynamic-eval-sink
+    message: Ruby dynamic evaluation primitive requires manual trust-boundary review.
+    severity: WARNING
+    languages: [ruby]
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: instance_eval(...)
+      - pattern: class_eval(...)
+    metadata:
+      huginn_category: dynamic_code_execution
+      huginn_confidence: LOW
+      huginn_validation: sink_only
+      huginn_source_to_sink: false
+      huginn_source: attacker-controlled input must be established manually
+      huginn_sink: Ruby dynamic evaluation
       cwe: CWE-95
       suspicious_package: false
 

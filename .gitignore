@@ -6,3 +6,5 @@ reports/
 *.db-shm
 *.db-wal
 .env
+build/
+*.egg-info/
