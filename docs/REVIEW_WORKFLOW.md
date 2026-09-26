@@ -211,3 +211,16 @@ A static match is still only a candidate until reachability, security boundary, 
 Operational failures are not CVEs. They are emitted to `operational_alerts.csv` because they can create a blind spot in the hunt. Alerted conditions include registry discovery failures, package/artifact scan failures, advisory API retrieval failures, and failed adjacent-version comparisons.
 
 A critical ecosystem coverage failure or failed package scan makes that matrix leg fail after its review packet is written. High-severity partial advisory failures remain visible as workflow warnings and in the operational alert CSV.
+
+## Repository CVE ledger
+
+After every hunt on `Primary`, the aggregate job runs `scripts/update_cve_ledger.py` and commits three static CSVs to the `huginn-ledger` branch under `ledger/`:
+
+- `cve_ledger.csv` — true positives only, severity LOW through CRITICAL, with every column filled. A row enters the ledger in one of two ways:
+  - `ADVISORY_EXACT_MATCH`: the shipped dependency version is an exact advisory match (`dedup_status=KNOWN_EXACT`) for a CVE or GHSA identifier. These are known, public CVEs present in the package, not novel findings.
+  - `ANALYST_VALIDATED`: an analyst set `review_status=VALIDATED` on a row in `candidate_queue.csv` and the row passes `huginn.review_validate`, so all four verification booleans are true and reviewer identity, decision, notes and timestamp are present.
+  Facts that no advisory publishes are written as explicit values (`NOT_PUBLISHED`, `NO_FIX_AVAILABLE`, `NOT_APPLICABLE`), never left blank. Repeat sightings update `last_seen_*` and `times_seen`.
+- `candidate_queue.csv` — `HIGH_VALUE_MANUAL_CANDIDATE` rows with the full review columns, deduplicated by finding fingerprint. Analyst edits to the review fields survive later hunts.
+- `run_log.csv` — one fully populated row per hunt.
+
+Sink-only scanner output never enters the ledger automatically. The job fails, and pushes nothing, if the ledger would contain a blank cell or a validated row that fails review validation.
