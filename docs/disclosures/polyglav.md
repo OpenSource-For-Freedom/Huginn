@@ -1,9 +1,11 @@
 # Disclosure — polyglav: `bash_allow` command allow-list bypass in `run_command`
 
 **Status:** VALIDATED (static), NOT DISCLOSED. Send only after owner approval.  
-**Report to:** GitHub private vulnerability reporting on `https://github.com/polyglav/polyglav`
-(Security → Report a vulnerability) if enabled; otherwise ask for a private contact through a
-minimal issue that contains no details. Author per PyPI metadata: Evgenij Myasnikov.  
+**Report to:** the maintainer directly. The repository's SECURITY.md offers a public issue with the
+`security` label, or direct contact with the maintainer. Private vulnerability reporting is not
+enabled (checked 2026-09-29). Do not put details in a public issue. If no private address can be
+found, open a minimal `security` issue asking for one, with no details. Author per PyPI metadata:
+Evgenij Myasnikov.  
 **Package:** `polyglav` (PyPI), bundled plugin `polyglav-core-exec`  
 **Affected:** 0.37.0 (2026-09-27) and 0.38.0 (2026-09-29), every release on PyPI. The plugin
 source is identical in both.  
