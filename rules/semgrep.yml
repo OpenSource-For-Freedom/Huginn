@@ -825,6 +825,8 @@ rules:
               - pattern: DB::statement($Q, ...)
               - pattern: DB::raw($Q)
               - pattern: $QB->whereRaw($Q, ...)
+          - pattern-not: $request->query(...)
+          - pattern-not: $req->query(...)
           - focus-metavariable: $Q
     pattern-sanitizers:
       - pattern: intval(...)

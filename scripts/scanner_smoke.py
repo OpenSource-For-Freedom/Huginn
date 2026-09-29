@@ -25,6 +25,11 @@ def main() -> None:
             "fixture/safe_db.py": b"def store(db, sql):\n    db.exec(sql)\n",
             "fixture/vuln.php": b"<?php\nfunction run() { $h = $_GET['host']; system('ping -c1 ' . $h); }\n",
             "fixture/safe_query.php": b"<?php\nfunction q($db) { $id = intval($_GET['id']); $db->query('SELECT ' . $id); }\n",
+            "fixture/safe_laravel.php": (
+                b"<?php\nfunction index($request) {\n"
+                b"  $s = trim((string) $request->query('q', ''));\n"
+                b"  return Media::query()->where('name', 'like', \"%{$s}%\")->get();\n}\n"
+            ),
             "fixture/safe_stats.go": (
                 b"package main\nimport \"fmt\"\n"
                 b"func stats(period string) {\n"
@@ -142,6 +147,12 @@ def main() -> None:
             for item in outcome.semgrep.get("results") or []
         ):
             raise SystemExit("PHP SQL rule ignored the intval() sanitizer")
+        if any(
+            str(item.get("path") or "").endswith("safe_laravel.php")
+            and ".php." in str(item.get("check_id") or "")
+            for item in outcome.semgrep.get("results") or []
+        ):
+            raise SystemExit("PHP rules treated Laravel $request->query() as a SQL sink")
         if any(
             str(item.get("path") or "").endswith("safe_stats.go")
             for item in outcome.semgrep.get("results") or []
