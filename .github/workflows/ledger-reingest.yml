@@ -1,0 +1,63 @@
+name: Huginn Ledger Reingest
+
+# Replays the merge + ledger steps for an earlier hunt whose own aggregate job failed.
+# Per-registry state marks those releases as scanned, so later hunts will not revisit them;
+# their review packets survive only as that run's artifacts (30-day retention).
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Huginn CVE Capture run ID whose review packets should be ingested
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: huginn-cve-capture-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  reingest:
+    name: Reingest hunt ${{ github.event.inputs.run_id }}
+    if: github.ref == 'refs/heads/Primary'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          file-integrity: auto
+          ebpf: auto
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate run ID
+        env:
+          RUN_ID: ${{ github.event.inputs.run_id }}
+        run: '[[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::run_id must be numeric"; exit 1; }'
+
+      - name: Download ecosystem packets
+        uses: actions/download-artifact@v5
+        with:
+          pattern: huginn-review-*-${{ github.event.inputs.run_id }}
+          path: matrix-results
+          run-id: ${{ github.event.inputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Merge hunt reports
+        run: python scripts/merge_hunt_reports.py matrix-results hunt-summary
+
+      - name: Update repository CVE ledger
+        run: scripts/push_cve_ledger.sh hunt-summary "${{ github.event.inputs.run_id }}"

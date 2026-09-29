@@ -224,3 +224,10 @@ After every hunt on `Primary`, the aggregate job runs `scripts/update_cve_ledger
 - `run_log.csv` — one fully populated row per hunt.
 
 Sink-only scanner output never enters the ledger automatically. The job fails, and pushes nothing, if the ledger would contain a blank cell or a validated row that fails review validation.
+
+### Recovering a hunt whose aggregate job failed
+
+Per-registry state marks scanned releases as completed even if the run's aggregate job later fails, so a
+re-run of the hunt does not revisit them. Their review packets survive as that run's artifacts for 30 days.
+Dispatch **Huginn Ledger Reingest** on `Primary` with the failed run's ID to replay the merge and ledger
+steps from those artifacts (`scripts/push_cve_ledger.sh`, shared with the capture workflow).
