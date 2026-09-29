@@ -72,6 +72,22 @@ class MergeHuntReportsTests(unittest.TestCase):
             write_csv(out, fields, rows)
             self.assertTrue(out.read_bytes().startswith(b"\xef\xbb\xbf"))
 
+    def test_oversized_evidence_field_is_read_not_fatal(self):
+        # A single scanner evidence value can exceed csv's default 128 KiB field limit
+        # (minified bundles); hunt 36575404456 failed its aggregate step on exactly this.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            packet = root / "huginn-review-npm-1"
+            packet.mkdir()
+            big = "x" * (300 * 1024)
+            with (packet / "review_findings.csv").open("w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=["registry", "evidence"])
+                writer.writeheader()
+                writer.writerow({"registry": "npm", "evidence": big})
+            fields, rows = read_csvs(root, "review_findings.csv")
+            self.assertEqual(fields, ["registry", "evidence"])
+            self.assertEqual(len(rows[0]["evidence"]), len(big))
+
 
 if __name__ == "__main__":
     unittest.main()

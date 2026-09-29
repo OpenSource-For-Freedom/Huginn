@@ -18,8 +18,8 @@ GHSA_API = "https://api.github.com/advisories"
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 REDHAT_API = "https://access.redhat.com/hydra/rest/securitydata/cve"
 
-OSV_ECOSYSTEM = {"npm": "npm", "pypi": "PyPI", "rubygems": "RubyGems"}
-GHSA_ECOSYSTEM = {"npm": "npm", "pypi": "pip", "rubygems": "rubygems"}
+OSV_ECOSYSTEM = {"npm": "npm", "pypi": "PyPI", "rubygems": "RubyGems", "crates": "crates.io", "packagist": "Packagist", "go": "Go"}
+GHSA_ECOSYSTEM = {"npm": "npm", "pypi": "pip", "rubygems": "rubygems", "crates": "rust", "packagist": "composer", "go": "go"}
 
 
 @dataclass(slots=True)

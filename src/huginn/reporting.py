@@ -132,6 +132,12 @@ def normalize_trivy(payload: dict[str, Any], *, run_id: str, run_started: str, c
             "pylock": "pypi",
             "bundler": "rubygems",
             "gemspec": "rubygems",
+            "cargo": "crates",
+            "rust-binary": "crates",
+            "composer": "packagist",
+            "composer-vendor": "packagist",
+            "gomod": "go",
+            "gobinary": "go",
         }.get(result_type, "")
         for vuln in result.get("Vulnerabilities") or []:
             vuln_id = _flat(vuln.get("VulnerabilityID"))

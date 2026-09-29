@@ -8,9 +8,9 @@ class EcosystemMatrixWorkflowTests(unittest.TestCase):
     def test_capture_workflow_isolated_per_ecosystem(self):
         text = Path(".github/workflows/cve-capture.yml").read_text(encoding="utf-8")
 
-        self.assertIn('["npm","pypi","rubygems"]', text)
+        self.assertIn('["npm","pypi","rubygems","crates","packagist","go"]', text)
         self.assertIn("fail-fast: false", text)
-        self.assertIn("max-parallel: 3", text)
+        self.assertIn("max-parallel: 6", text)
         self.assertIn("runs-on: ubuntu-24.04", text)
         self.assertNotIn("self-hosted", text)
         self.assertIn("state-{1}.db", text)

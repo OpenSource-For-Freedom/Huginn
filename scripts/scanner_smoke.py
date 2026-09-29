@@ -23,6 +23,13 @@ def main() -> None:
             "fixture/safe_subprocess.py": b"import subprocess\ndef run(repo):\n    return subprocess.run(['git', '-C', repo, 'status'], check=True)\n",
             "fixture/requirements.txt": b"jinja2==3.1.4\n",
             "fixture/safe_db.py": b"def store(db, sql):\n    db.exec(sql)\n",
+            "fixture/vuln.php": b"<?php\nfunction run() { $h = $_GET['host']; system('ping -c1 ' . $h); }\n",
+            "fixture/safe_query.php": b"<?php\nfunction q($db) { $id = intval($_GET['id']); $db->query('SELECT ' . $id); }\n",
+            "fixture/vuln.go": (
+                b"package main\nimport (\"net/http\"; \"os/exec\")\n"
+                b"func h(w http.ResponseWriter, r *http.Request) {\n"
+                b"\thost := r.URL.Query().Get(\"host\")\n\texec.Command(\"sh\", \"-c\", \"ping \"+host).Run()\n}\n"
+            ),
         }
 
         with tarfile.open(archive, "w:gz") as tf:
@@ -120,6 +127,16 @@ def main() -> None:
         ]
         if safe_subprocess_noise:
             raise SystemExit("Generic command rule incorrectly matched safe subprocess argv execution")
+
+        for language_rule in ("huginn.php.tainted-command-execution", "huginn.go.tainted-command-execution"):
+            if not any(rule_id == language_rule or rule_id.endswith(f".{language_rule}") for rule_id in semgrep_ids):
+                raise SystemExit(f"Semgrep failed to detect {language_rule}; got {sorted(semgrep_ids)}")
+        if any(
+            str(item.get("path") or "").endswith("safe_query.php")
+            and str(item.get("check_id") or "").endswith("huginn.php.tainted-sql-query")
+            for item in outcome.semgrep.get("results") or []
+        ):
+            raise SystemExit("PHP SQL rule ignored the intval() sanitizer")
 
         if not any("os.system(user_input)" in value for value in excerpts):
             raise SystemExit(

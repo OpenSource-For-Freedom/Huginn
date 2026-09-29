@@ -31,6 +31,8 @@ class RuleCoverageTests(unittest.TestCase):
         self.assertIn("languages: [javascript, typescript]", text)
         self.assertIn("languages: [ruby]", text)
         self.assertIn("languages: [c, cpp]", text)
+        self.assertIn("languages: [php]", text)
+        self.assertIn("languages: [go]", text)
 
 
 if __name__ == "__main__":

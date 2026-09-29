@@ -693,3 +693,244 @@ rules:
       huginn_sink: regular expression engine
       cwe: CWE-1333
       suspicious_package: false
+
+  - id: huginn.php.tainted-command-execution
+    message: Untrusted PHP request input reaches operating-system command execution.
+    severity: ERROR
+    languages: [php]
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER['HTTP_$X']
+      - patterns:
+          - pattern-either:
+              - pattern: $REQUEST->input(...)
+              - pattern: $REQUEST->query(...)
+              - pattern: $REQUEST->get(...)
+          - metavariable-regex:
+              metavariable: $REQUEST
+              regex: (?i)^\$(request|req)$
+    pattern-sinks:
+      - pattern: system(...)
+      - pattern: exec(...)
+      - pattern: shell_exec(...)
+      - pattern: passthru(...)
+      - pattern: popen(...)
+      - pattern: proc_open(...)
+    pattern-sanitizers:
+      - pattern: escapeshellarg(...)
+    metadata:
+      huginn_category: command_execution
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted HTTP request input
+      huginn_sink: operating-system command execution
+      cwe: CWE-78
+      suspicious_package: false
+
+  - id: huginn.php.tainted-code-execution
+    message: Untrusted PHP request input reaches dynamic code evaluation or file inclusion.
+    severity: ERROR
+    languages: [php]
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - patterns:
+          - pattern-either:
+              - pattern: $REQUEST->input(...)
+              - pattern: $REQUEST->query(...)
+          - metavariable-regex:
+              metavariable: $REQUEST
+              regex: (?i)^\$(request|req)$
+    pattern-sinks:
+      - pattern: eval(...)
+      - pattern: assert(...)
+      - pattern: create_function(...)
+      - pattern: include $X
+      - pattern: include_once $X
+      - pattern: require $X
+      - pattern: require_once $X
+    metadata:
+      huginn_category: dynamic_code_execution
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted HTTP request input
+      huginn_sink: eval or file inclusion
+      cwe: CWE-94
+      suspicious_package: false
+
+  - id: huginn.php.tainted-deserialization
+    message: Untrusted PHP request input reaches unserialize().
+    severity: ERROR
+    languages: [php]
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - patterns:
+          - pattern-either:
+              - pattern: $REQUEST->input(...)
+              - pattern: $REQUEST->cookie(...)
+          - metavariable-regex:
+              metavariable: $REQUEST
+              regex: (?i)^\$(request|req)$
+    pattern-sinks:
+      - patterns:
+          - pattern: unserialize($DATA, ...)
+          - pattern-not: "unserialize($DATA, ['allowed_classes' => false])"
+          - focus-metavariable: $DATA
+    metadata:
+      huginn_category: unsafe_deserialization
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted HTTP request input
+      huginn_sink: unserialize
+      cwe: CWE-502
+      suspicious_package: false
+
+  - id: huginn.php.tainted-sql-query
+    message: Untrusted PHP request input is concatenated into a raw SQL query.
+    severity: ERROR
+    languages: [php]
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - patterns:
+          - pattern-either:
+              - pattern: $REQUEST->input(...)
+              - pattern: $REQUEST->query(...)
+          - metavariable-regex:
+              metavariable: $REQUEST
+              regex: (?i)^\$(request|req)$
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: mysqli_query($C, $Q)
+              - pattern: $DB->query($Q, ...)
+              - pattern: DB::select($Q, ...)
+              - pattern: DB::statement($Q, ...)
+              - pattern: DB::raw($Q)
+              - pattern: $QB->whereRaw($Q, ...)
+          - focus-metavariable: $Q
+    pattern-sanitizers:
+      - pattern: intval(...)
+      - pattern: (int) $X
+      - pattern: $PDO->quote(...)
+    metadata:
+      huginn_category: sql_injection
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted HTTP request input
+      huginn_sink: raw SQL query
+      cwe: CWE-89
+      suspicious_package: false
+
+  - id: huginn.go.tainted-command-execution
+    message: Untrusted Go HTTP input reaches operating-system command execution.
+    severity: ERROR
+    languages: [go]
+    mode: taint
+    pattern-sources:
+      - pattern: $R.URL.Query().Get(...)
+      - pattern: $R.FormValue(...)
+      - pattern: $R.PostFormValue(...)
+      - pattern: $R.Header.Get(...)
+      - pattern: mux.Vars(...)
+      - pattern: $C.Query(...)
+      - pattern: $C.Param(...)
+      - pattern: $C.PostForm(...)
+    pattern-sinks:
+      - pattern: exec.Command(...)
+      - pattern: exec.CommandContext(...)
+      - pattern: syscall.Exec(...)
+    metadata:
+      huginn_category: command_execution
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted HTTP request input
+      huginn_sink: operating-system command execution
+      cwe: CWE-78
+      suspicious_package: false
+
+  - id: huginn.go.tainted-sql-query
+    message: Untrusted Go HTTP input is formatted into a raw SQL query.
+    severity: ERROR
+    languages: [go]
+    mode: taint
+    pattern-sources:
+      - pattern: $R.URL.Query().Get(...)
+      - pattern: $R.FormValue(...)
+      - pattern: $R.PostFormValue(...)
+      - pattern: mux.Vars(...)
+      - pattern: $C.Query(...)
+      - pattern: $C.Param(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $DB.Query($Q, ...)
+              - pattern: $DB.QueryRow($Q, ...)
+              - pattern: $DB.Exec($Q, ...)
+              - pattern: $DB.QueryContext($CTX, $Q, ...)
+              - pattern: $DB.ExecContext($CTX, $Q, ...)
+          - pattern-not: $DB.Query("...", ...)
+          - pattern-not: $DB.QueryRow("...", ...)
+          - pattern-not: $DB.Exec("...", ...)
+          - pattern-not: $DB.QueryContext($CTX, "...", ...)
+          - pattern-not: $DB.ExecContext($CTX, "...", ...)
+          - focus-metavariable: $Q
+    metadata:
+      huginn_category: sql_injection
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted HTTP request input
+      huginn_sink: raw SQL query string
+      cwe: CWE-89
+      suspicious_package: false
+
+  - id: huginn.go.tainted-file-path
+    message: Untrusted Go HTTP input selects a filesystem path.
+    severity: ERROR
+    languages: [go]
+    mode: taint
+    pattern-sources:
+      - pattern: $R.URL.Query().Get(...)
+      - pattern: $R.FormValue(...)
+      - pattern: mux.Vars(...)
+      - pattern: $C.Query(...)
+      - pattern: $C.Param(...)
+    pattern-sinks:
+      - pattern: os.Open(...)
+      - pattern: os.OpenFile(...)
+      - pattern: os.ReadFile(...)
+      - pattern: os.WriteFile(...)
+      - pattern: os.Remove(...)
+      - pattern: os.RemoveAll(...)
+      - pattern: http.ServeFile($W, $R, ...)
+    pattern-sanitizers:
+      - pattern: filepath.Base(...)
+    metadata:
+      huginn_category: path_traversal
+      huginn_confidence: HIGH
+      huginn_validation: dataflow
+      huginn_source_to_sink: true
+      huginn_source: untrusted HTTP request input
+      huginn_sink: filesystem path
+      cwe: CWE-22
+      suspicious_package: false

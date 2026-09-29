@@ -21,6 +21,15 @@ RUBYGEMS_NEW = "https://rubygems.org/api/v1/activity/latest.json"
 NPM_REPLICA = "https://replicate.npmjs.com"
 NPM_CHANGES = "https://replicate.npmjs.com/registry/_changes"
 NPM_REGISTRY = "https://registry.npmjs.org"
+CRATES_API = "https://crates.io/api/v1/crates"
+CRATES_DOWNLOAD = "https://static.crates.io/crates"
+PACKAGIST_RELEASES = "https://packagist.org/feeds/releases.rss"
+PACKAGIST_NEW = "https://packagist.org/feeds/packages.rss"
+PACKAGIST_REPO = "https://repo.packagist.org/p2"
+PACKAGIST_DIST_HOSTS = {"api.github.com", "codeload.github.com", "gitlab.com", "bitbucket.org"}
+GO_INDEX = "https://index.golang.org/index"
+GO_PROXY = "https://proxy.golang.org"
+GO_LOOKBACK = timedelta(hours=6)
 
 
 class DiscoveryError(RuntimeError):
@@ -369,6 +378,174 @@ def resolve_npm_artifact(candidate: ReleaseCandidate) -> Artifact:
     )
 
 
+# --- crates.io -----------------------------------------------------------------------
+
+
+def discover_crates(mode: str, limit: int) -> DiscoveryBatch:
+    sorts = ("new", "recent-updates") if mode == "all" else (("new",) if mode == "new" else ("recent-updates",))
+    unique: dict[tuple[str, str], ReleaseCandidate] = {}
+    for sort in sorts:
+        per_page = max(1, min(limit, 100))
+        payload = _json(f"{CRATES_API}?sort={sort}&per_page={per_page}")
+        for item in payload.get("crates") or []:
+            name = str(item.get("name") or "")
+            version = str(item.get("newest_version") or item.get("max_version") or "")
+            if not name or not version or item.get("yanked"):
+                continue
+            unique.setdefault((name, version), ReleaseCandidate(
+                registry="crates",
+                name=name,
+                version=version,
+                event_type="NEW_PACKAGE" if sort == "new" else "NEW_VERSION",
+                published_at=str(item.get("updated_at") or item.get("created_at") or ""),
+                source_url=str(item.get("repository") or f"https://crates.io/crates/{name}"),
+            ))
+            if len(unique) >= limit:
+                break
+        if len(unique) >= limit:
+            break
+    return DiscoveryBatch(candidates=list(unique.values())[:limit])
+
+
+def resolve_crates_artifact(candidate: ReleaseCandidate) -> Artifact:
+    name = urllib.parse.quote(candidate.name, safe="")
+    version = urllib.parse.quote(candidate.version, safe="")
+    meta = _json(f"{CRATES_API}/{name}/{version}")
+    checksum = str((meta.get("version") or {}).get("checksum") or "")
+    return Artifact(
+        filename=f"{candidate.name}-{candidate.version}.crate",
+        url=f"{CRATES_DOWNLOAD}/{name}/{name}-{version}.crate",
+        sha256=checksum,
+        registry_digest=checksum,
+    )
+
+
+# --- Packagist (Composer) --------------------------------------------------------------
+
+
+def _packagist_feed(url: str, event_type: str, limit: int) -> list[ReleaseCandidate]:
+    root = ET.fromstring(_request(url, accept="application/rss+xml"))
+    out: list[ReleaseCandidate] = []
+    for item in root.iter("item"):
+        guid = (item.findtext("guid") or "").strip()
+        parts = guid.rsplit(" ", 1)
+        if len(parts) != 2 or "/" not in parts[0]:
+            continue
+        out.append(ReleaseCandidate(
+            registry="packagist",
+            name=parts[0],
+            version=parts[1],
+            event_type=event_type,
+            published_at=(item.findtext("pubDate") or "").strip(),
+            source_url=(item.findtext("link") or "").strip(),
+        ))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def discover_packagist(mode: str, limit: int) -> DiscoveryBatch:
+    feeds = []
+    if mode in ("all", "new"):
+        feeds.append((PACKAGIST_NEW, "NEW_PACKAGE"))
+    if mode in ("all", "updates"):
+        feeds.append((PACKAGIST_RELEASES, "NEW_VERSION"))
+    unique: dict[tuple[str, str], ReleaseCandidate] = {}
+    for url, event_type in feeds:
+        for candidate in _packagist_feed(url, event_type, limit):
+            unique.setdefault((candidate.name, candidate.version), candidate)
+    return DiscoveryBatch(candidates=list(unique.values())[:limit])
+
+
+def _expand_composer_versions(entries: list[dict]) -> list[dict]:
+    """Undo Composer v2 metadata minification: each entry inherits unchanged keys from the previous one."""
+    expanded: list[dict] = []
+    current: dict = {}
+    for entry in entries:
+        current = dict(current)
+        for key, value in entry.items():
+            if value == "__unset":
+                current.pop(key, None)
+            else:
+                current[key] = value
+        expanded.append(current)
+    return expanded
+
+
+def resolve_packagist_artifact(candidate: ReleaseCandidate) -> Artifact:
+    vendor, _, package = candidate.name.partition("/")
+    path = f"{urllib.parse.quote(vendor, safe='')}/{urllib.parse.quote(package, safe='')}"
+    payload = _json(f"{PACKAGIST_REPO}/{path}.json")
+    entries = (payload.get("packages") or {}).get(candidate.name) or []
+    if payload.get("minified") == "composer/2.0":
+        entries = _expand_composer_versions(entries)
+    wanted = {candidate.version, candidate.version.lstrip("v")}
+    match = next((e for e in entries if str(e.get("version")) in wanted
+                  or str(e.get("version", "")).lstrip("v") in wanted), None)
+    if match is None:
+        raise DiscoveryError(f"packagist has no version {candidate.version} for {candidate.name}")
+    dist = match.get("dist") or {}
+    url = str(dist.get("url") or "")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname not in PACKAGIST_DIST_HOSTS:
+        raise DiscoveryError(f"packagist dist host is not allowed: {parsed.hostname}")
+    return Artifact(
+        filename=f"{package}-{candidate.version}.zip",
+        url=url,
+        registry_digest=str(dist.get("shasum") or dist.get("reference") or ""),
+    )
+
+
+# --- Go modules -----------------------------------------------------------------------
+
+
+def _is_go_pseudo_version(version: str) -> bool:
+    # vX.Y.Z-yyyymmddhhmmss-abcdefabcdef (optionally after a pre-release): untagged commits.
+    tail = version.rsplit("-", 2)
+    return len(tail) == 3 and len(tail[2]) == 12 and tail[1][-14:].isdigit()
+
+
+def _go_escape(path: str) -> str:
+    return "".join(f"!{c.lower()}" if c.isupper() else c for c in path)
+
+
+def discover_go(mode: str, limit: int) -> DiscoveryBatch:
+    since = (datetime.now(UTC) - GO_LOOKBACK).strftime("%Y-%m-%dT%H:%M:%SZ")
+    raw = _request(f"{GO_INDEX}?since={since}&limit=2000").decode("utf-8", "replace")
+    unique: dict[tuple[str, str], ReleaseCandidate] = {}
+    for line in reversed(raw.splitlines()):
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        path, version = str(item.get("Path") or ""), str(item.get("Version") or "")
+        if not path or not version or _is_go_pseudo_version(version):
+            continue
+        event_type = "NEW_VERSION"
+        if mode == "new" and not version.startswith(("v0.0.1", "v0.1.0", "v1.0.0")):
+            continue
+        unique.setdefault((path, version), ReleaseCandidate(
+            registry="go",
+            name=path,
+            version=version,
+            event_type=event_type,
+            published_at=str(item.get("Timestamp") or ""),
+            source_url=f"https://pkg.go.dev/{path}@{version}",
+        ))
+        if len(unique) >= limit:
+            break
+    return DiscoveryBatch(candidates=list(unique.values()))
+
+
+def resolve_go_artifact(candidate: ReleaseCandidate) -> Artifact:
+    path = urllib.parse.quote(_go_escape(candidate.name), safe="/!")
+    version = urllib.parse.quote(_go_escape(candidate.version), safe="!")
+    return Artifact(
+        filename=f"{candidate.name.rsplit('/', 1)[-1]}-{candidate.version}.zip",
+        url=f"{GO_PROXY}/{path}/@v/{version}.zip",
+    )
+
+
 def discover(registry: str, mode: str, limit: int, state: StateDB | None = None) -> DiscoveryBatch:
     if registry == "pypi":
         return discover_pypi(mode, limit)
@@ -378,6 +555,12 @@ def discover(registry: str, mode: str, limit: int, state: StateDB | None = None)
         if state is None:
             raise DiscoveryError("npm discovery requires durable state")
         return discover_npm(mode, limit, state)
+    if registry == "crates":
+        return discover_crates(mode, limit)
+    if registry == "packagist":
+        return discover_packagist(mode, limit)
+    if registry == "go":
+        return discover_go(mode, limit)
     raise DiscoveryError(f"Registry adapter not enabled: {registry}")
 
 
@@ -445,4 +628,10 @@ def resolve_artifact(candidate: ReleaseCandidate) -> Artifact:
         return resolve_rubygems_artifact(candidate)
     if candidate.registry == "npm":
         return resolve_npm_artifact(candidate)
+    if candidate.registry == "crates":
+        return resolve_crates_artifact(candidate)
+    if candidate.registry == "packagist":
+        return resolve_packagist_artifact(candidate)
+    if candidate.registry == "go":
+        return resolve_go_artifact(candidate)
     raise DiscoveryError(f"No artifact resolver for registry: {candidate.registry}")
