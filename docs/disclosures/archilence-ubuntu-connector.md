@@ -2,9 +2,12 @@
 
 **Status:** VALIDATED (static), NOT DISCLOSED. Send only after owner approval.  
 **Package:** `archilence-ubuntu-connector` (PyPI)  
-**Affected:** every published release, 1.0.0 (2026-04-11) through 2.3.0 (2026-09-26).  
-**Evidence artifact:** `archilence_ubuntu_connector-2.3.0.tar.gz` sha256
-`f12479e58d894df25fb65a6e57e7dd7a77cc59e5097b57668d7e1f56cfa86996`  
+**Affected:** every published release, 1.0.0 (2026-04-11) through 2.5.0 (2026-09-29). 2.4.0 and
+2.5.0 changed only packaging metadata; `tool_server.py` and `main.py` are identical to 2.3.0.  
+**Evidence artifacts:** `archilence_ubuntu_connector-2.3.0.tar.gz` sha256
+`f12479e58d894df25fb65a6e57e7dd7a77cc59e5097b57668d7e1f56cfa86996`;
+`archilence_ubuntu_connector-2.5.0.tar.gz` sha256
+`ba90ac7f42f113dcff7d2fd2c9b7edd4c332431ebe043b5aa0fc06f9af3c9220`  
 **Weakness:** CWE-306 (Missing Authentication for Critical Function)  
 **Suggested CVSS 3.1:**
 - default configuration (information disclosure): `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N` (7.5)
@@ -13,8 +16,10 @@
 
 **Report to:** the package metadata names no author, maintainer, homepage or repository, so the
 right channel has to be found before sending:
-1. The Archilence vendor's published security contact (`security.txt` or security page on the
-   vendor domain that the connector registers with as Core).
+1. The Archilence vendor's published security contact: `https://archilence.com/.well-known/security.txt`
+   or a security page on `archilence.com`. The README installs from and registers with
+   `cockpit.archilence.com`. (This domain could not be reached from the Huginn review environment;
+   check it from a browser.)
 2. Otherwise the vendor's general support contact, asking for a security contact first and
    sending no details until one is given.
 3. If no contact responds within 14 days, ask PyPI security (`security@pypi.org`) to help
@@ -24,13 +29,13 @@ right channel has to be found before sending:
 
 ## Report text (ready to send once a contact is confirmed)
 
-**Subject:** Unauthenticated access to archilence-ubuntu-connector tool server (all versions)
+**Subject:** Unauthenticated access to archilence-ubuntu-connector tool server (1.0.0–2.5.0)
 
 Hello Archilence team,
 
 While reviewing newly published PyPI releases, we found that the tool server in
 `archilence-ubuntu-connector` accepts requests from anyone who can reach it. This affects every
-published release, 1.0.0 through 2.3.0.
+published release, 1.0.0 through 2.5.0.
 
 **Details**
 
