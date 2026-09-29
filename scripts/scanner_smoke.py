@@ -25,6 +25,11 @@ def main() -> None:
             "fixture/safe_db.py": b"def store(db, sql):\n    db.exec(sql)\n",
             "fixture/vuln.php": b"<?php\nfunction run() { $h = $_GET['host']; system('ping -c1 ' . $h); }\n",
             "fixture/safe_query.php": b"<?php\nfunction q($db) { $id = intval($_GET['id']); $db->query('SELECT ' . $id); }\n",
+            "fixture/safe_stats.go": (
+                b"package main\nimport \"fmt\"\n"
+                b"func stats(period string) {\n"
+                b"\tq := fmt.Sprintf(\"SELECT 1 %s\", period)\n\tgetDB().Query(q)\n}\n"
+            ),
             "fixture/vuln.go": (
                 b"package main\nimport (\"net/http\"; \"os/exec\")\n"
                 b"func h(w http.ResponseWriter, r *http.Request) {\n"
@@ -137,6 +142,12 @@ def main() -> None:
             for item in outcome.semgrep.get("results") or []
         ):
             raise SystemExit("PHP SQL rule ignored the intval() sanitizer")
+        if any(
+            str(item.get("path") or "").endswith("safe_stats.go")
+            for item in outcome.semgrep.get("results") or []
+            if ".go." in str(item.get("check_id") or "")
+        ):
+            raise SystemExit("Go taint rules treated a non-request .Query() call as an HTTP input source")
 
         if not any("os.system(user_input)" in value for value in excerpts):
             raise SystemExit(

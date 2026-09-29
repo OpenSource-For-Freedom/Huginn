@@ -851,9 +851,14 @@ rules:
       - pattern: $R.PostFormValue(...)
       - pattern: $R.Header.Get(...)
       - pattern: mux.Vars(...)
-      - pattern: $C.Query(...)
-      - pattern: $C.Param(...)
-      - pattern: $C.PostForm(...)
+      - patterns:
+          - pattern-either:
+              - pattern: $C.Query(...)
+              - pattern: $C.Param(...)
+              - pattern: $C.PostForm(...)
+          - metavariable-regex:
+              metavariable: $C
+              regex: ^(c|ctx|gc|ginCtx)$
     pattern-sinks:
       - pattern: exec.Command(...)
       - pattern: exec.CommandContext(...)
@@ -878,8 +883,13 @@ rules:
       - pattern: $R.FormValue(...)
       - pattern: $R.PostFormValue(...)
       - pattern: mux.Vars(...)
-      - pattern: $C.Query(...)
-      - pattern: $C.Param(...)
+      - patterns:
+          - pattern-either:
+              - pattern: $C.Query(...)
+              - pattern: $C.Param(...)
+          - metavariable-regex:
+              metavariable: $C
+              regex: ^(c|ctx|gc|ginCtx)$
     pattern-sinks:
       - patterns:
           - pattern-either:
@@ -913,8 +923,13 @@ rules:
       - pattern: $R.URL.Query().Get(...)
       - pattern: $R.FormValue(...)
       - pattern: mux.Vars(...)
-      - pattern: $C.Query(...)
-      - pattern: $C.Param(...)
+      - patterns:
+          - pattern-either:
+              - pattern: $C.Query(...)
+              - pattern: $C.Param(...)
+          - metavariable-regex:
+              metavariable: $C
+              regex: ^(c|ctx|gc|ginCtx)$
     pattern-sinks:
       - pattern: os.Open(...)
       - pattern: os.OpenFile(...)
