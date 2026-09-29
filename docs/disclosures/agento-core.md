@@ -1,13 +1,16 @@
 # Disclosure — agento-core: toolbox Jira proxy sends stored credentials to a caller-chosen host
 
-**Status:** VALIDATED (static), NOT DISCLOSED. Send only after owner approval.  
-**Report to:** GitHub private vulnerability reporting on `https://github.com/agento-cc/agento`
-(Security → Report a vulnerability). Do not open a public issue. The package names Marcin Klauza as
+**Status:** VALIDATED (static), REPORTED PRIVATELY as GHSA-84cw-x9fw-ghjp.  
+**Report to:** GitHub private vulnerability reporting on `https://github.com/openagento/agento`
+(Security → Report a vulnerability), where GHSA-84cw-x9fw-ghjp was filed. Do not open a public issue. The package names Marcin Klauza as
 author and publishes no security email.  
 **Package:** `agento-core` (PyPI)  
 **Affected:** 0.6.0 (2026-04-15) through 0.16.3 (2026-09-29, current stable), 39 releases.  
 **Fixed in:** 0.17.0rc2 (pre-release, 2026-09-22), which ignores `jira_host` and requires a
-host-relative `path`. The fix has not reached a stable release: 0.16.3 was published a week after it
+host-relative `path`. Upstream PR https://github.com/openagento/agento/pull/50 (the v0.17.0rc2
+release) carries it in commit `e405cf3` "AG-16 Toolbox east-west capability auth", which also puts
+every `/api/*` route behind an `internal_rest` capability token, so the agent sandbox's MCP tokens
+can no longer reach `/api/jira/request`. The fix has not reached a stable release: 0.16.3 was published a week after it
 and is still vulnerable.  
 **Evidence artifacts:** `agento_core-0.16.3.tar.gz` sha256
 `1800b8306048a7de4f59db89c1ab1778c8ebb2f9538883821336bdea3bcc0ad9`;
