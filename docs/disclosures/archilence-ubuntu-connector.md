@@ -14,6 +14,8 @@
 - `control.enabled` (unauthenticated service/container restart and stop): `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:H` (9.4)
 - `control.enabled` + `control.allow_exec` (unauthenticated command execution): 9.8
 
+**Contact found:** `hello@archilence.com` (general address, supplied by the owner 2026-09-29). Send the
+no-details contact request there first.  
 **Report to:** the package metadata names no author, maintainer, homepage or repository, so the
 right channel has to be found before sending:
 1. The Archilence vendor's published security contact: `https://archilence.com/.well-known/security.txt`
