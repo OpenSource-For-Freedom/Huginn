@@ -15,7 +15,7 @@ class ReleaseCandidate:
 
     @property
     def purl(self) -> str:
-        ecosystem = {"pypi": "pypi", "rubygems": "gem", "npm": "npm"}.get(self.registry, self.registry)
+        ecosystem = {"pypi": "pypi", "rubygems": "gem", "npm": "npm", "crates": "cargo", "packagist": "composer", "go": "golang"}.get(self.registry, self.registry)
         safe_name = self.name.replace("@", "%40") if self.registry == "npm" else self.name
         return f"pkg:{ecosystem}/{safe_name}@{self.version}"
 

@@ -22,6 +22,9 @@ from .validation import apply_validation
 DEFAULT_MAX_ARTIFACT = 100 * 1024 * 1024
 
 
+REGISTRIES = ("npm", "pypi", "rubygems", "crates", "packagist", "go")
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
@@ -195,7 +198,7 @@ def capture_registry(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capture static package findings into review-first CSV reports.")
-    parser.add_argument("--registry", choices=["npm", "pypi", "rubygems", "all"], default="all")
+    parser.add_argument("--registry", choices=[*REGISTRIES, "all"], default="all")
     parser.add_argument("--mode", choices=["all", "updates", "new"], default="all")
     parser.add_argument("--limit", type=int, default=25)
     parser.add_argument("--output", type=Path, default=Path("reports"))
@@ -222,7 +225,7 @@ def main() -> None:
     )
     advisory = AdvisoryClient()
     state = StateDB(args.state_db)
-    registries = ["npm", "pypi", "rubygems"] if args.registry == "all" else [args.registry]
+    registries = list(REGISTRIES) if args.registry == "all" else [args.registry]
 
     all_findings: list[dict] = []
     all_manifests: list[dict] = []
