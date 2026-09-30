@@ -1,6 +1,6 @@
 # Disclosure — nontainer: agent-writable `.nontainer/kv.pkl` is unpickled on the host (DirProvider)
 
-**Status:** VALIDATED (static), NOT DISCLOSED. Send only after owner approval.  
+**Status:** VALIDATED (static), REPORTED PRIVATELY by email to the maintainer on 2026-09-30. Disclosure deadline 2026-12-29.  
 **Report to:** Adam Ashenfelter (`ashenfad`), sole committer, at `ashenfad@gmail.com` (the author
 address on every public commit). The repository has no SECURITY.md and private vulnerability
 reporting is not enabled (checked 2026-09-30), so a direct email is the private channel. Do not
