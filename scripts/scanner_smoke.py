@@ -25,6 +25,32 @@ def main() -> None:
             "fixture/safe_db.py": b"def store(db, sql):\n    db.exec(sql)\n",
             "fixture/vuln.php": b"<?php\nfunction run() { $h = $_GET['host']; system('ping -c1 ' . $h); }\n",
             "fixture/safe_query.php": b"<?php\nfunction q($db) { $id = intval($_GET['id']); $db->query('SELECT ' . $id); }\n",
+            "fixture/safe_laravel.php": (
+                b"<?php\nfunction index($request) {\n"
+                b"  $s = trim((string) $request->query('q', ''));\n"
+                b"  return Media::query()->where('name', 'like', \"%{$s}%\")->get();\n}\n"
+            ),
+            "fixture/safe_stats.go": (
+                b"package main\nimport \"fmt\"\n"
+                b"func stats(period string) {\n"
+                b"\tq := fmt.Sprintf(\"SELECT 1 %s\", period)\n\tgetDB().Query(q)\n}\n"
+            ),
+            # A receiver named c that is not a gin.Context (FerretDB's backend collection).
+            "fixture/safe_collection.go": (
+                b"package main\nimport \"context\"\n"
+                b"func run(ctx context.Context, c *coll, db *store) {\n"
+                b"\tres, _ := c.Query(ctx, nil)\n\tdb.Exec(res.SQL)\n}\n"
+            ),
+            "fixture/safe_nullsafe.php": (
+                b"<?php\nfunction page($request) {\n"
+                b"  $n = self::number($request?->query('nutrient'));\n"
+                b"  return Site::query()->where('slug', (string) $request->query('site'))->first();\n}\n"
+            ),
+            "fixture/vuln_gin.go": (
+                b"package main\nimport (\"database/sql\"; \"github.com/gin-gonic/gin\")\n"
+                b"func h(c *gin.Context, db *sql.DB) {\n"
+                b"\tid := c.Query(\"id\")\n\tdb.Query(\"SELECT * FROM t WHERE id=\" + id)\n}\n"
+            ),
             "fixture/vuln.go": (
                 b"package main\nimport (\"net/http\"; \"os/exec\")\n"
                 b"func h(w http.ResponseWriter, r *http.Request) {\n"
@@ -128,7 +154,11 @@ def main() -> None:
         if safe_subprocess_noise:
             raise SystemExit("Generic command rule incorrectly matched safe subprocess argv execution")
 
-        for language_rule in ("huginn.php.tainted-command-execution", "huginn.go.tainted-command-execution"):
+        for language_rule in (
+            "huginn.php.tainted-command-execution",
+            "huginn.go.tainted-command-execution",
+            "huginn.go.tainted-sql-query",
+        ):
             if not any(rule_id == language_rule or rule_id.endswith(f".{language_rule}") for rule_id in semgrep_ids):
                 raise SystemExit(f"Semgrep failed to detect {language_rule}; got {sorted(semgrep_ids)}")
         if any(
@@ -137,6 +167,18 @@ def main() -> None:
             for item in outcome.semgrep.get("results") or []
         ):
             raise SystemExit("PHP SQL rule ignored the intval() sanitizer")
+        if any(
+            str(item.get("path") or "").endswith(("safe_laravel.php", "safe_nullsafe.php"))
+            and ".php." in str(item.get("check_id") or "")
+            for item in outcome.semgrep.get("results") or []
+        ):
+            raise SystemExit("PHP rules treated Laravel $request->query() as a SQL sink")
+        if any(
+            str(item.get("path") or "").endswith(("safe_stats.go", "safe_collection.go"))
+            for item in outcome.semgrep.get("results") or []
+            if ".go." in str(item.get("check_id") or "")
+        ):
+            raise SystemExit("Go taint rules treated a non-request .Query() call as an HTTP input source")
 
         if not any("os.system(user_input)" in value for value in excerpts):
             raise SystemExit(

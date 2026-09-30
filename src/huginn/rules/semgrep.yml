@@ -820,7 +820,12 @@ rules:
       - patterns:
           - pattern-either:
               - pattern: mysqli_query($C, $Q)
-              - pattern: $DB->query($Q, ...)
+              # Laravel's $request->query('key') getter has the same shape as $db->query($sql).
+              - patterns:
+                  - pattern: $DB->query($Q, ...)
+                  - metavariable-regex:
+                      metavariable: $DB
+                      regex: (?i)^(?!\$(this->)?(request|req)$)
               - pattern: DB::select($Q, ...)
               - pattern: DB::statement($Q, ...)
               - pattern: DB::raw($Q)
@@ -851,9 +856,18 @@ rules:
       - pattern: $R.PostFormValue(...)
       - pattern: $R.Header.Get(...)
       - pattern: mux.Vars(...)
-      - pattern: $C.Query(...)
-      - pattern: $C.Param(...)
-      - pattern: $C.PostForm(...)
+      # gin.Context getters take exactly one key; database-style .Query(ctx, ...) calls take more.
+      - pattern: ($C:*gin.Context).Query($K)
+      - pattern: ($C:*gin.Context).Param($K)
+      - pattern: ($C:*gin.Context).PostForm($K)
+      - patterns:
+          - pattern-either:
+              - pattern: $C.Query($K)
+              - pattern: $C.Param($K)
+              - pattern: $C.PostForm($K)
+          - metavariable-regex:
+              metavariable: $C
+              regex: ^(c|ctx|gc|ginCtx)$
     pattern-sinks:
       - pattern: exec.Command(...)
       - pattern: exec.CommandContext(...)
@@ -878,8 +892,16 @@ rules:
       - pattern: $R.FormValue(...)
       - pattern: $R.PostFormValue(...)
       - pattern: mux.Vars(...)
-      - pattern: $C.Query(...)
-      - pattern: $C.Param(...)
+      # gin.Context getters take exactly one key; database-style .Query(ctx, ...) calls take more.
+      - pattern: ($C:*gin.Context).Query($K)
+      - pattern: ($C:*gin.Context).Param($K)
+      - patterns:
+          - pattern-either:
+              - pattern: $C.Query($K)
+              - pattern: $C.Param($K)
+          - metavariable-regex:
+              metavariable: $C
+              regex: ^(c|ctx|gc|ginCtx)$
     pattern-sinks:
       - patterns:
           - pattern-either:
@@ -913,8 +935,16 @@ rules:
       - pattern: $R.URL.Query().Get(...)
       - pattern: $R.FormValue(...)
       - pattern: mux.Vars(...)
-      - pattern: $C.Query(...)
-      - pattern: $C.Param(...)
+      # gin.Context getters take exactly one key; database-style .Query(ctx, ...) calls take more.
+      - pattern: ($C:*gin.Context).Query($K)
+      - pattern: ($C:*gin.Context).Param($K)
+      - patterns:
+          - pattern-either:
+              - pattern: $C.Query($K)
+              - pattern: $C.Param($K)
+          - metavariable-regex:
+              metavariable: $C
+              regex: ^(c|ctx|gc|ginCtx)$
     pattern-sinks:
       - pattern: os.Open(...)
       - pattern: os.OpenFile(...)
