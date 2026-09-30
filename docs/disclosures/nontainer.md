@@ -1,6 +1,10 @@
 # Disclosure — nontainer: agent-writable `.nontainer/kv.pkl` is unpickled on the host (DirProvider)
 
-**Status:** VALIDATED (static), REPORTED PRIVATELY by email to the maintainer on 2026-09-30. Disclosure deadline 2026-12-29.  
+**Status:** FIXED UPSTREAM in 0.8.3 (2026-09-30). Reported privately by email on 2026-09-30; the maintainer
+replied the same day that the `dir` backend ("vestigial and unused") was removed in v0.8.3. Verified
+statically against the 0.8.3 sdist (sha256 `aa2134578384d6fd19e1547ed2717bc446baf6ba26f936ddd45cbba907f63998`):
+`nontainer/providers/dir.py` is gone and `Store(backend="dir")` now raises `ValueError`. No CVE was
+mentioned; one can be requested from MITRE for 0.1.2–0.8.2, fixed in 0.8.3.  
 **Report to:** Adam Ashenfelter (`ashenfad`), sole committer, at `ashenfad@gmail.com` (the author
 address on every public commit). The repository has no SECURITY.md and private vulnerability
 reporting is not enabled (checked 2026-09-30), so a direct email is the private channel. Do not
