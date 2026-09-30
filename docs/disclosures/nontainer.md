@@ -1,10 +1,10 @@
 # Disclosure — nontainer: agent-writable `.nontainer/kv.pkl` is unpickled on the host (DirProvider)
 
 **Status:** VALIDATED (static), NOT DISCLOSED. Send only after owner approval.  
-**Report to:** maintainer `ashenfad` (github.com/ashenfad). The repository has no SECURITY.md and
-private vulnerability reporting is not enabled (checked 2026-09-30). Ask for a private channel
-first, either by email if the GitHub profile lists one, or with a minimal issue that contains no
-details, and suggest they enable private vulnerability reporting.  
+**Report to:** Adam Ashenfelter (`ashenfad`), sole committer, at `ashenfad@gmail.com` (the author
+address on every public commit). The repository has no SECURITY.md and private vulnerability
+reporting is not enabled (checked 2026-09-30), so a direct email is the private channel. Do not
+open a public issue.  
 **Package:** `nontainer` (PyPI), `store(..., backend="dir")` / `DirProvider`  
 **Affected:** every release, 0.1.2 (2026-07-19) through 0.8.2 (2026-09-29). `dir.py`'s pickle
 store and `executor_dud.py` exist in every checked release (0.1.2, 0.2.0, 0.3.0, 0.5.0, 0.6.0, 0.7.0,
@@ -20,11 +20,11 @@ The final score depends on how the maintainer frames the local executors.
 
 ---
 
-## Report text (ready to send once a private channel is confirmed)
+## Report text (ready to send)
 
 **Subject:** Agent code can escape nontainer's sandbox via `.nontainer/kv.pkl` with the `dir` backend (0.1.2–0.8.2)
 
-Hello,
+Hi Adam,
 
 While reviewing recent PyPI releases, I found a way for agent code to run arbitrary code in
 the host process when a nontainer store uses the `dir` backend. It also works from inside the
