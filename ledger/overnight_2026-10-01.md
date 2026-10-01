@@ -22,7 +22,12 @@ validated findings go to `ledger/disclosure_tracker.csv` with a maintainer repor
 | 05:05 packagist | 36818133945 | success | 3 | 3 | 0 | 0 | 26 scanned, 2 failed. Same `$request->query()` rule noise (webhook verify handler) |
 | 05:05 npm | 36818129308 | success (gate green) | 0 | 0 | 0 | 0 | 100 scanned, **0 failed** — the 24 failures in the previous run did not recur (transient). 0 findings this batch |
 | 05:05 pypi | 36818131574 | success | 13 | 13 | 0 | 0 | 61 scanned, 0 failed. Scanner README/comment text, vendored C strcpy of fixed literals, own-file pickles |
-| 05:09 go | 36818465682 | running | | | | | |
+| 05:09 go | 36818465682 | success | 444 | 444 | 0 | 0 | 100 scanned, 1 failed. Mis-cased mirrors of Helm v4 (`Storage.Query` is a label lookup, 102 rows), compass test fixtures clearing `document.body` across 9 versions (342) |
+| 06:01 crates | 36822646303 | success | 0 | 0 | 0 | 0 | 19 scanned, 1 known-CVE ledger row |
+| 06:01 rubygems | 36822643909 | success | 0 | 0 | 0 | 0 | 20 scanned, 1 failed |
+| 06:01 packagist | 36822641749 | success | 72 | 72 | 0 | 0 | 40 scanned, 2 failed. `$request->query()` rule again (x-change, larafly, vibeui); larafly admin filters checked: schema allow-list, grammar-quoted, bound |
+| 06:01 pypi | 36822639565 | success | 10 | 10 | 0 | 0 | 84 scanned, 3 failed. Scanner docs, own-artifact pickles, developer-path tar helper |
+| 06:01 npm | 36822637833 | running at 06:50 (longer than earlier npm runs) | | | | | |
 
 ## Incidents
 
