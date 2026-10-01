@@ -6,7 +6,7 @@ validated findings go to `ledger/disclosure_tracker.csv` with a maintainer repor
 
 | Dispatched (UTC) | Run ID | Aggregate | Candidates | Rejected | Deferred | Validated | Notes |
 |---|---|---|---|---|---|---|---|
-| 02:18 | (in flight) | | | | | | first overnight hunt |
+| 02:18 | 36805232125 | ledger updated (capture gate red: npm 2 pkgs, packagist 1 failed scan) | 109 | 109 | 0 | 0 | ran pre-fix code; npm still empty; mostly Laravel request-getter noise (70) and connext Map.get (20) |
 
 ## Incidents
 
