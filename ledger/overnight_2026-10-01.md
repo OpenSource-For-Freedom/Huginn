@@ -33,6 +33,13 @@ validated findings go to `ledger/disclosure_tracker.csv` with a maintainer repor
 | 06:52 packagist | 36827134111 | success | 0 | 0 | 0 | 0 | 40 scanned, 1 failed |
 | 06:52 rubygems | 36827136557 | ledger updated (capture gate red: 1 of 8 failed, download HTTP error) | 0 | 0 | 0 | 0 | 8 scanned. Gate floor added (`675e2f7`) |
 | 06:52 crates | 36827138921 | success | 0 | 0 | 0 | 0 | 22 scanned, clean |
+| 07:47 | dispatcher → 6 runs (gate floor live) | | | | | | |
+| 07:47 crates | 36832425722 | success | 0 | 0 | 0 | 0 | 15 scanned, clean |
+| 07:47 rubygems | 36832445025 | success (1 failed scan, now under the gate floor) | 0 | 0 | 0 | 0 | 12 scanned |
+| 07:47 packagist | 36832429546 | success | 7 | 7 | 0 | 0 | 40 scanned, 2 failed. `$request->query()` noise; preview redirect confined to app host |
+| 07:47 go | 36832424308 | success | 17 | 17 | 0 | 0 | 100 scanned. dagger cache/GraphQL `Query` methods, test teardown, int query param |
+| 07:47 pypi | 36832422320 | success | 18 | 16 | 2 | 0 | 97 scanned. Deferred: a storage library whose default "auto" mode unpickles non-JSON values (needs a consumer reading untrusted stores; owner decision). Rest: own-file pickles, build scripts |
+| 07:47 npm | 36832437472 | success | 0 | 0 | 0 | 0 | 100 scanned, 0 failed, 0 findings |
 
 ## Incidents
 
