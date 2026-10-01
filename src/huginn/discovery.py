@@ -238,82 +238,18 @@ def _first_npm_version(packument: dict) -> str:
     return min(versions, key=lambda item: item[1])[0]
 
 
-def discover_npm(mode: str, limit: int, state: StateDB) -> DiscoveryBatch:
-    cursor = state.get_cursor("npm.sequence")
-    since_time = state.get_cursor("npm.publish_window")
-
-    if not cursor:
-        meta = _json(f"{NPM_REPLICA}/")
-        update_seq = str(meta.get("update_seq") or "")
-        if not update_seq:
-            raise DiscoveryError("npm replication endpoint did not return update_seq")
-
-        bootstrap_limit = max(limit * 10, 250)
-        query = urllib.parse.urlencode({"descending": "true", "limit": bootstrap_limit})
-        changes = _json(f"{NPM_CHANGES}?{query}")
-        threshold = datetime.now(UTC) - timedelta(hours=24)
-        candidates: list[ReleaseCandidate] = []
-        seen: set[tuple[str, str]] = set()
-
-        for change in changes.get("results") or []:
-            package_name = str(change.get("id") or "")
-            if not package_name or package_name.startswith("_"):
-                continue
-            try:
-                packument = _npm_packument(package_name)
-            except urllib.error.HTTPError as exc:
-                if exc.code == 404:
-                    continue
-                raise
-
-            first_version = _first_npm_version(packument)
-            for version, published_raw in (packument.get("time") or {}).items():
-                if version in {"created", "modified"} or not isinstance(published_raw, str):
-                    continue
-                published = _parse_iso(published_raw)
-                if published < threshold:
-                    continue
-                event_type = "NEW_PACKAGE" if version == first_version else "NEW_VERSION"
-                if mode == "new" and event_type != "NEW_PACKAGE":
-                    continue
-                if mode == "updates" and event_type != "NEW_VERSION":
-                    continue
-                key = (package_name, version)
-                if key in seen:
-                    continue
-                seen.add(key)
-                candidates.append(
-                    ReleaseCandidate(
-                        registry="npm",
-                        name=package_name,
-                        version=version,
-                        event_type=event_type,
-                        published_at=published_raw,
-                        source_url=f"https://www.npmjs.com/package/{urllib.parse.quote(package_name, safe='@/')}",
-                    )
-                )
-                if len(candidates) >= limit:
-                    break
-            if len(candidates) >= limit:
-                break
-
-        return DiscoveryBatch(
-            candidates=candidates,
-            checkpoint={"npm.sequence": update_seq, "npm.publish_window": _utc_now()},
-        )
-
-    query = urllib.parse.urlencode({"since": cursor, "limit": max(limit * 4, 50)})
-    changes = _json(f"{NPM_CHANGES}?{query}")
-    results = changes.get("results") or []
-    last_seq = str(changes.get("last_seq") or cursor)
-
-    # A wide overlap protects against replication/CDN timing skew. Release identity
-    # in SQLite prevents overlap from creating duplicate completed scans.
-    threshold = _parse_iso(since_time or "") - timedelta(hours=24)
+def _npm_candidates(
+    changes: list[dict],
+    threshold: datetime,
+    mode: str,
+    limit: int,
+    state: StateDB,
+) -> list[ReleaseCandidate]:
+    """Turn replicate _changes rows into release candidates published after threshold."""
     candidates: list[ReleaseCandidate] = []
     seen: set[tuple[str, str]] = set()
 
-    for change in results:
+    for change in changes:
         package_name = str(change.get("id") or "")
         if not package_name or package_name.startswith("_"):
             continue
@@ -325,8 +261,7 @@ def discover_npm(mode: str, limit: int, state: StateDB) -> DiscoveryBatch:
             raise
 
         first_version = _first_npm_version(packument)
-        time_map = packument.get("time") or {}
-        for version, published_raw in time_map.items():
+        for version, published_raw in (packument.get("time") or {}).items():
             if version in {"created", "modified"} or not isinstance(published_raw, str):
                 continue
             published = _parse_iso(published_raw)
@@ -352,12 +287,53 @@ def discover_npm(mode: str, limit: int, state: StateDB) -> DiscoveryBatch:
                 )
             )
             if len(candidates) >= limit:
-                break
-        if len(candidates) >= limit:
-            break
+                return candidates
+    return candidates
 
+
+def _npm_recent(mode: str, limit: int, state: StateDB, update_seq: str) -> DiscoveryBatch:
+    """Scan the most recent changes, newest first, for releases from the last 24 hours."""
+    query = urllib.parse.urlencode({"descending": "true", "limit": max(limit * 10, 250)})
+    changes = _json(f"{NPM_CHANGES}?{query}")
+    threshold = datetime.now(UTC) - timedelta(hours=24)
     return DiscoveryBatch(
-        candidates=candidates,
+        candidates=_npm_candidates(changes.get("results") or [], threshold, mode, limit, state),
+        checkpoint={"npm.sequence": update_seq, "npm.publish_window": _utc_now()},
+    )
+
+
+def _npm_cursor_is_stale(cursor: str, update_seq: str, limit: int) -> bool:
+    """True when the saved sequence is further behind the feed head than one window can cover."""
+    try:
+        return int(update_seq) - int(cursor) > max(limit * 4, 50)
+    except ValueError:
+        return False
+
+
+def discover_npm(mode: str, limit: int, state: StateDB) -> DiscoveryBatch:
+    cursor = state.get_cursor("npm.sequence")
+    since_time = state.get_cursor("npm.publish_window")
+
+    meta = _json(f"{NPM_REPLICA}/")
+    update_seq = str(meta.get("update_seq") or "")
+    if not update_seq:
+        raise DiscoveryError("npm replication endpoint did not return update_seq")
+
+    # npm publishes far more changes between hunts than one window reads. Walking forward
+    # from an old cursor only ever reaches changes older than the publish window, so every
+    # release is filtered out. When the cursor has fallen behind, rescan the newest changes.
+    if not cursor or _npm_cursor_is_stale(cursor, update_seq, limit):
+        return _npm_recent(mode, limit, state, update_seq)
+
+    query = urllib.parse.urlencode({"since": cursor, "limit": max(limit * 4, 50)})
+    changes = _json(f"{NPM_CHANGES}?{query}")
+    last_seq = str(changes.get("last_seq") or cursor)
+
+    # A wide overlap protects against replication/CDN timing skew. Release identity
+    # in SQLite prevents overlap from creating duplicate completed scans.
+    threshold = _parse_iso(since_time or "") - timedelta(hours=24)
+    return DiscoveryBatch(
+        candidates=_npm_candidates(changes.get("results") or [], threshold, mode, limit, state),
         checkpoint={"npm.sequence": last_seq, "npm.publish_window": _utc_now()},
     )
 
