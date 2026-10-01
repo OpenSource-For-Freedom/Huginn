@@ -1,0 +1,52 @@
+name: Huginn Hunt Each Registry
+
+# Starts one independent "Huginn CVE Capture" run per registry. Each run has its own
+# concurrency queue, its own capture and aggregate jobs, and its own ledger commit, so a
+# slow or failing registry no longer holds up or reddens the others.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: First-publish, new-version, or both
+        required: true
+        type: choice
+        default: all
+        options: [all, updates, new]
+      limit:
+        description: Maximum releases per ecosystem
+        required: true
+        default: "100"
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: Start ${{ matrix.ecosystem }} hunt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        ecosystem: ["npm", "pypi", "rubygems", "crates", "packagist", "go"]
+
+    steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          file-integrity: auto
+
+      - name: Dispatch ${{ matrix.ecosystem }} capture
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+          LIMIT: ${{ inputs.limit }}
+          ECOSYSTEM: ${{ matrix.ecosystem }}
+        run: |
+          gh workflow run cve-capture.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME" \
+            -f registry="$ECOSYSTEM" -f mode="$MODE" -f limit="$LIMIT"

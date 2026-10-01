@@ -10,7 +10,9 @@ git config user.name "huginn-ledger[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 # Each attempt rebuilds the ledger on the branch's latest tip, so analyst edits pushed
 # to candidate_queue.csv while the hunt ran are kept rather than overwritten.
-for attempt in 1 2 3; do
+# Registries hunt in separate runs and can finish together, so allow several rebuild/push
+# rounds with growing, jittered back-off.
+for attempt in 1 2 3 4 5 6; do
   rm -rf ledger-branch && git worktree prune
   if git ls-remote --exit-code --heads origin "$LEDGER_BRANCH" >/dev/null; then
     git fetch --no-tags origin "$LEDGER_BRANCH"
@@ -26,7 +28,7 @@ for attempt in 1 2 3; do
   fi
   git -C ledger-branch commit -q -m "Hunt ${HUNT_ID}: update CVE ledger"
   if git -C ledger-branch push origin "HEAD:$LEDGER_BRANCH"; then exit 0; fi
-  sleep $((attempt * 5))
+  sleep $((attempt * 5 + RANDOM % 10))
 done
 echo "::error::could not push CVE ledger"
 exit 1

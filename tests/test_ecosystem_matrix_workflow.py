@@ -23,5 +23,20 @@ class EcosystemMatrixWorkflowTests(unittest.TestCase):
         self.assertIn("scripts/merge_hunt_reports.py", text)
 
 
+    def test_each_registry_runs_in_its_own_queue(self):
+        text = Path(".github/workflows/cve-capture.yml").read_text(encoding="utf-8")
+        self.assertIn("group: huginn-cve-capture-${{ github.ref }}-${{ inputs.registry || 'all' }}", text)
+        self.assertIn("run-name:", text)
+
+    def test_hunt_each_registry_dispatches_one_capture_per_ecosystem(self):
+        text = Path(".github/workflows/hunt-each-registry.yml").read_text(encoding="utf-8")
+        self.assertIn('["npm", "pypi", "rubygems", "crates", "packagist", "go"]', text)
+        self.assertIn("gh workflow run cve-capture.yml", text)
+        self.assertIn('-f registry="$ECOSYSTEM"', text)
+        self.assertIn("actions: write", text)
+        # Inputs reach the shell through env, never by direct expression interpolation.
+        self.assertNotIn("${{ inputs.mode }}\n", text.split("run: |", 1)[1])
+
+
 if __name__ == "__main__":
     unittest.main()
