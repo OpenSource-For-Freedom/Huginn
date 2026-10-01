@@ -8,6 +8,8 @@ validated findings go to `ledger/disclosure_tracker.csv` with a maintainer repor
 |---|---|---|---|---|---|---|---|
 | 02:18 | 36805232125 | ledger updated (capture gate red: npm 2 pkgs, packagist 1 failed scan) | 109 | 109 | 0 | 0 | ran pre-fix code; npm still empty; mostly Laravel request-getter noise (70) and connext Map.get (20) |
 | 03:56 | dispatcher 36812825084 → 6 per-registry runs | | | | | | first round as separate registry hunts (npm fix + per-registry queues live) |
+| 03:57 rubygems | 36812856467 | success | 26 scanned | 0 | 0 | 0 | 0 | clean |
+| 03:57 crates | 36812858499 | success | 33 scanned | 0 | 0 | 0 | 0 | clean |
 
 ## Incidents
 
