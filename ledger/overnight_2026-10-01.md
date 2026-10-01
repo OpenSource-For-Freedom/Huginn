@@ -27,7 +27,12 @@ validated findings go to `ledger/disclosure_tracker.csv` with a maintainer repor
 | 06:01 rubygems | 36822643909 | success | 0 | 0 | 0 | 0 | 20 scanned, 1 failed |
 | 06:01 packagist | 36822641749 | success | 72 | 72 | 0 | 0 | 40 scanned, 2 failed. `$request->query()` rule again (x-change, larafly, vibeui); larafly admin filters checked: schema allow-list, grammar-quoted, bound |
 | 06:01 pypi | 36822639565 | success | 10 | 10 | 0 | 0 | 84 scanned, 3 failed. Scanner docs, own-artifact pickles, developer-path tar helper |
-| 06:01 npm | 36822637833 | running at 06:50 (longer than earlier npm runs) | | | | | |
+| 06:01 npm | 36822637833 | success | 48 | 48 | 0 | 0 | 100 scanned, 0 failed (49 min capture). One npm package across 8 versions: file routes behind a path-containment check |
+| 06:52 go | 36827129203 | success | 5 | 5 | 0 | 0 | 100 scanned, 1 failed. 5,138 known-CVE ledger rows (lockfiles in module zips) |
+| 06:52 pypi | 36827131412 | success | 210 | 210 | 0 | 0 | 79 scanned. Vendored PostgreSQL C in a parser binding (186), local AI CLI running user commands by design (20), constant clear-screen, CLI-input regex |
+| 06:52 packagist | 36827134111 | success | 0 | 0 | 0 | 0 | 40 scanned, 1 failed |
+| 06:52 rubygems | 36827136557 | ledger updated (capture gate red: 1 of 8 failed, download HTTP error) | 0 | 0 | 0 | 0 | 8 scanned. Gate floor added (`675e2f7`) |
+| 06:52 crates | 36827138921 | success | 0 | 0 | 0 | 0 | 22 scanned, clean |
 
 ## Incidents
 
@@ -57,3 +62,6 @@ validated findings go to `ledger/disclosure_tracker.csv` with a maintainer repor
 
 - **Scanner note (not fixed tonight):** the PHP `tainted-sql-query` rule treats Laravel `$request->query()` as a SQL
   sink. It produced 165 of tonight's 408 candidates and most of the 02:18 noise.
+
+- **07:50 UTC — small-batch gate noise.** A rubygems hunt of 8 packages went red because one gem download
+  returned an HTTP error (12.5% > 10%). `675e2f7` keeps the 10% rule but also requires more than two failed scans.
