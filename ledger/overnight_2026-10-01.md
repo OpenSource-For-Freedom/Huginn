@@ -17,6 +17,12 @@ validated findings go to `ledger/disclosure_tracker.csv` with a maintainer repor
 | 04:20 crates | 36814689698 | success | 0 | 0 | 0 | 0 | 4 scanned, clean |
 | 04:20 rubygems | 36814687097 | success | 0 | 0 | 0 | 0 | 11 scanned, clean |
 | 05:08 | npm, pypi, packagist, rubygems, crates re-dispatched | | | | | | round 3, running ledger sharding (`a283859`) and failure logging (`8e512fe`) |
+| 05:05 rubygems | 36818136098 | success | 0 | 0 | 0 | 0 | 3 scanned, clean |
+| 05:05 crates | 36818138058 | success | 0 | 0 | 0 | 0 | 15 scanned, clean |
+| 05:05 packagist | 36818133945 | success | 3 | 3 | 0 | 0 | 26 scanned, 2 failed. Same `$request->query()` rule noise (webhook verify handler) |
+| 05:05 npm | 36818129308 | success (gate green) | 0 | 0 | 0 | 0 | 100 scanned, **0 failed** — the 24 failures in the previous run did not recur (transient). 0 findings this batch |
+| 05:05 pypi | 36818131574 | success | 13 | 13 | 0 | 0 | 61 scanned, 0 failed. Scanner README/comment text, vendored C strcpy of fixed literals, own-file pickles |
+| 05:09 go | 36818465682 | running | | | | | |
 
 ## Incidents
 
