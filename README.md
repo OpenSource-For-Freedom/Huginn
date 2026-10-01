@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/huginn-banner.jpg" alt="Huginn" width="100%"/></p>
+
 # Huginn
 
 Private static-analysis reconnaissance for newly published open-source packages.
