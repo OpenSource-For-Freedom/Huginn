@@ -216,7 +216,7 @@ A critical ecosystem coverage failure or failed package scan makes that matrix l
 
 After every hunt on `Primary`, the aggregate job runs `scripts/update_cve_ledger.py` and commits three static CSVs to the `huginn-ledger` branch under `ledger/`:
 
-- `cve_ledger.csv` — true positives only, severity LOW through CRITICAL, with every column filled. A row enters the ledger in one of two ways:
+- `cve_ledger/<registry>-<h>.csv` — true positives only, severity LOW through CRITICAL, with every column filled. The ledger is split by registry and the first hex digit of `ledger_id` so no file nears GitHub's 100 MB per-file limit; concatenate the shards (same header) to get the whole table. A row enters the ledger in one of two ways:
   - `ADVISORY_EXACT_MATCH`: the shipped dependency version is an exact advisory match (`dedup_status=KNOWN_EXACT`) for a CVE or GHSA identifier. These are known, public CVEs present in the package, not novel findings.
   - `ANALYST_VALIDATED`: an analyst set `review_status=VALIDATED` on a row in `candidate_queue.csv` and the row passes `huginn.review_validate`, so all four verification booleans are true and reviewer identity, decision, notes and timestamp are present.
   Facts that no advisory publishes are written as explicit values (`NOT_PUBLISHED`, `NO_FIX_AVAILABLE`, `NOT_APPLICABLE`), never left blank. Repeat sightings update `last_seen_*` and `times_seen`.

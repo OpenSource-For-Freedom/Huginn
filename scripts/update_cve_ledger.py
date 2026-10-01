@@ -3,8 +3,9 @@
 Three CSVs live in the ledger directory (committed to the ``huginn-ledger`` branch by the
 capture workflow after every hunt):
 
-* ``cve_ledger.csv`` - true positives only, LOW..CRITICAL, every column filled. A row enters it
-  when either
+* ``cve_ledger/<registry>-<h>.csv`` - true positives only, LOW..CRITICAL, every column filled,
+  sharded by registry and the first hex digit of ``ledger_id`` so no file nears GitHub's 100 MB
+  per-file limit (``read_ledger`` returns all shards as one table). A row enters it when either
     - the finding is an advisory-confirmed CVE/GHSA match for the exact shipped dependency version
       (``dedup_status=KNOWN_EXACT``), or
     - an analyst promoted a candidate to ``review_status=VALIDATED`` in ``candidate_queue.csv``
@@ -60,6 +61,10 @@ RUN_LOG_COLUMNS = [
 # Placeholders for facts the upstream advisory genuinely does not publish, so that a filled cell
 # always states something true instead of being blank.
 NOT_PUBLISHED = "NOT_PUBLISHED"
+LEDGER_DIR = "cve_ledger"
+LEGACY_LEDGER = "cve_ledger.csv"
+# GitHub rejects pushes containing a file over 100 MB; fail before that with a clear message.
+MAX_FILE_BYTES = 90 * 1024 * 1024
 NOT_APPLICABLE = "NOT_APPLICABLE"
 NO_FIX = "NO_FIX_AVAILABLE"
 
@@ -73,6 +78,31 @@ def read_rows(path: Path) -> list[dict[str, str]]:
         return []
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         return [dict(row) for row in csv.DictReader(handle)]
+
+
+def ledger_shard(row: dict[str, str]) -> str:
+    return f"{row['registry'] or 'unknown'}-{row['ledger_id'][:1] or '0'}.csv"
+
+
+def read_ledger(ledger_dir: Path) -> list[dict[str, str]]:
+    """All ledger rows: every shard, plus the pre-shard single file if it is still present."""
+    rows = read_rows(ledger_dir / LEGACY_LEDGER)
+    for shard in sorted((ledger_dir / LEDGER_DIR).glob("*.csv")):
+        rows.extend(read_rows(shard))
+    return rows
+
+
+def write_ledger(ledger_dir: Path, rows: list[dict[str, str]]) -> None:
+    shards: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        shards.setdefault(ledger_shard(row), []).append(row)
+    shard_dir = ledger_dir / LEDGER_DIR
+    for stale in shard_dir.glob("*.csv"):
+        if stale.name not in shards:
+            stale.unlink()
+    for name, shard_rows in shards.items():
+        write_rows(shard_dir / name, LEDGER_COLUMNS, shard_rows)
+    (ledger_dir / LEGACY_LEDGER).unlink(missing_ok=True)
 
 
 def write_rows(path: Path, columns: list[str], rows: list[dict[str, str]]) -> None:
@@ -164,11 +194,10 @@ def update(packet: Path, ledger_dir: Path, hunt_id: str, now: str | None = None)
     summary_path = packet / "matrix_summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.is_file() else {}
 
-    ledger_path = ledger_dir / "cve_ledger.csv"
     queue_path = ledger_dir / "candidate_queue.csv"
     log_path = ledger_dir / "run_log.csv"
 
-    ledger = {row["ledger_id"]: row for row in read_rows(ledger_path)}
+    ledger = {row["ledger_id"]: row for row in read_ledger(ledger_dir)}
     queue = {row["finding_fingerprint"]: row for row in read_rows(queue_path) if row.get("finding_fingerprint")}
 
     added = seen_again = candidates_added = promoted = 0
@@ -221,7 +250,7 @@ def update(packet: Path, ledger_dir: Path, hunt_id: str, now: str | None = None)
     ledger_rows = sorted(ledger.values(), key=lambda r: (SEVERITIES.index(r["severity"]) if r["severity"] in SEVERITIES else 9,
                                                          r["registry"], r["package_name"], r["package_version"],
                                                          r["vulnerability_id"]))
-    write_rows(ledger_path, LEDGER_COLUMNS, ledger_rows)
+    write_ledger(ledger_dir, ledger_rows)
 
     log_rows = read_rows(log_path)
     log_entry = {
@@ -253,16 +282,23 @@ def update(packet: Path, ledger_dir: Path, hunt_id: str, now: str | None = None)
 def check_ledger(ledger_dir: Path) -> list[str]:
     """Every ledger row must have every column filled and a LOW..CRITICAL severity."""
     errors = []
-    for line, row in enumerate(read_rows(ledger_dir / "cve_ledger.csv"), 2):
-        missing = blank_columns(row, LEDGER_COLUMNS)
-        if missing:
-            errors.append(f"cve_ledger.csv line {line}: blank {', '.join(missing)}")
-        if row.get("severity") not in SEVERITIES:
-            errors.append(f"cve_ledger.csv line {line}: severity {row.get('severity')!r} outside LOW..CRITICAL")
+    shards = [ledger_dir / LEGACY_LEDGER, *sorted((ledger_dir / LEDGER_DIR).glob("*.csv"))]
+    for shard in shards:
+        name = shard.relative_to(ledger_dir).as_posix()
+        for line, row in enumerate(read_rows(shard), 2):
+            missing = blank_columns(row, LEDGER_COLUMNS)
+            if missing:
+                errors.append(f"{name} line {line}: blank {', '.join(missing)}")
+            if row.get("severity") not in SEVERITIES:
+                errors.append(f"{name} line {line}: severity {row.get('severity')!r} outside LOW..CRITICAL")
     for line, row in enumerate(read_rows(ledger_dir / "run_log.csv"), 2):
         missing = blank_columns(row, RUN_LOG_COLUMNS)
         if missing:
             errors.append(f"run_log.csv line {line}: blank {', '.join(missing)}")
+    for path in ledger_dir.rglob("*"):
+        if path.is_file() and path.stat().st_size > MAX_FILE_BYTES:
+            errors.append(f"{path.relative_to(ledger_dir).as_posix()} is {path.stat().st_size} bytes; "
+                          f"over the {MAX_FILE_BYTES}-byte limit kept below GitHub's 100 MB file cap")
     return errors
 
 

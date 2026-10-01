@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from huginn.reporting import REVIEW_COLUMNS
-from scripts.update_cve_ledger import LEDGER_COLUMNS, RUN_LOG_COLUMNS, check_ledger, read_rows, update
+from scripts.update_cve_ledger import LEDGER_COLUMNS, RUN_LOG_COLUMNS, check_ledger, read_ledger, read_rows, update, write_rows
 
 
 def finding(**overrides):
@@ -81,7 +81,7 @@ class CveLedgerTests(unittest.TestCase):
             packet = write_packet(root, [known_cve(fixed_version="", cvss_score="")])
             update(packet, root / "ledger", "101", now="2026-09-26T02:00:00Z")
 
-            rows = read_rows(root / "ledger" / "cve_ledger.csv")
+            rows = read_ledger(root / "ledger")
             self.assertEqual(len(rows), 1)
             row = rows[0]
             self.assertEqual([c for c in LEDGER_COLUMNS if not row[c]], [])
@@ -103,7 +103,7 @@ class CveLedgerTests(unittest.TestCase):
             ])
             update(packet, root / "ledger", "101")
 
-            self.assertEqual(read_rows(root / "ledger" / "cve_ledger.csv"), [])
+            self.assertEqual(read_ledger(root / "ledger"), [])
             queue = read_rows(root / "ledger" / "candidate_queue.csv")
             self.assertEqual([r["finding_fingerprint"] for r in queue], ["f" * 64])
             self.assertEqual(queue[0]["review_status"], "PENDING")
@@ -124,7 +124,7 @@ class CveLedgerTests(unittest.TestCase):
                 write_packet(root, [known_cve()])
                 update(packet, root / "ledger", hunt)
 
-            rows = read_rows(root / "ledger" / "cve_ledger.csv")
+            rows = read_ledger(root / "ledger")
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["times_seen"], "2")
             self.assertEqual(rows[0]["first_logged_hunt"], "101")
@@ -161,7 +161,7 @@ class CveLedgerTests(unittest.TestCase):
 
             self.assertEqual(entry["analyst_validated_promoted"], "1")
             self.assertEqual(read_rows(queue_path)[0]["review_status"], "VALIDATED")
-            rows = read_rows(root / "ledger" / "cve_ledger.csv")
+            rows = read_ledger(root / "ledger")
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["finding_type"], "NOVEL_ANALYST_VALIDATED")
             self.assertEqual(rows[0]["dependency_name"], "NOT_APPLICABLE")
@@ -173,6 +173,35 @@ class CveLedgerTests(unittest.TestCase):
             packet = write_packet(root, [candidate(review_status="VALIDATED")])
             with self.assertRaises(SystemExit):
                 update(packet, root / "ledger", "101")
+
+    def test_ledger_is_sharded_and_legacy_single_file_is_migrated(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            ledger_dir = root / "ledger"
+            packet = write_packet(root, [known_cve()])
+            update(packet, ledger_dir, "101", now="2026-09-26T02:00:00Z")
+            (old,) = read_ledger(ledger_dir)
+            # Recreate the pre-shard layout: one cve_ledger.csv holding every row.
+            for shard in (ledger_dir / "cve_ledger").glob("*.csv"):
+                shard.unlink()
+            write_rows(ledger_dir / "cve_ledger.csv", LEDGER_COLUMNS, [old])
+
+            update(packet, ledger_dir, "102", now="2026-09-27T02:00:00Z")
+
+            self.assertFalse((ledger_dir / "cve_ledger.csv").exists())
+            shards = sorted(p.name for p in (ledger_dir / "cve_ledger").glob("*.csv"))
+            self.assertEqual(shards, [f"{old['registry']}-{old['ledger_id'][0]}.csv"])
+            (row,) = read_ledger(ledger_dir)
+            self.assertEqual((row["times_seen"], row["first_logged_hunt"]), ("2", "101"))
+            self.assertEqual(check_ledger(ledger_dir), [])
+
+    def test_oversized_ledger_file_fails_validation(self):
+        with tempfile.TemporaryDirectory() as td:
+            ledger_dir = Path(td) / "ledger"
+            ledger_dir.mkdir()
+            with (ledger_dir / "big.csv").open("wb") as f:
+                f.truncate(91 * 1024 * 1024)
+            self.assertTrue(any("big.csv" in e for e in check_ledger(ledger_dir)))
 
 
 if __name__ == "__main__":
