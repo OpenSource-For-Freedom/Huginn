@@ -2,12 +2,16 @@
 
 **Status:** VALIDATED (static), NOT DISCLOSED. Send only after owner approval.  
 **Package:** `archilence-ubuntu-connector` (PyPI)  
-**Affected:** every published release, 1.0.0 (2026-04-11) through 2.5.0 (2026-09-29). 2.4.0 and
-2.5.0 changed only packaging metadata; `tool_server.py` and `main.py` are identical to 2.3.0.  
+**Affected:** every published release, 1.0.0 (2026-04-11) through 2.6.1 (2026-10-02). 2.4.0 and
+2.5.0 changed only packaging metadata; `tool_server.py` and `main.py` are identical to 2.3.0. 2.6.0
+(2026-10-01) and 2.6.1 (2026-10-02) change only version metadata and one diagram-type entry in
+`manifest.ts`; `tool_server.py` is unchanged (checked 2026-10-02).  
 **Evidence artifacts:** `archilence_ubuntu_connector-2.3.0.tar.gz` sha256
 `f12479e58d894df25fb65a6e57e7dd7a77cc59e5097b57668d7e1f56cfa86996`;
 `archilence_ubuntu_connector-2.5.0.tar.gz` sha256
-`ba90ac7f42f113dcff7d2fd2c9b7edd4c332431ebe043b5aa0fc06f9af3c9220`  
+`ba90ac7f42f113dcff7d2fd2c9b7edd4c332431ebe043b5aa0fc06f9af3c9220`;
+`archilence_ubuntu_connector-2.6.1.tar.gz` sha256
+`4bd0aba8a3f5ea7d1622b163aa6f653bff20f7d7ead779340cf691c52a92d6f9`  
 **Weakness:** CWE-306 (Missing Authentication for Critical Function)  
 **Suggested CVSS 3.1:**
 - default configuration (information disclosure): `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N` (7.5)
@@ -31,13 +35,13 @@ right channel has to be found before sending:
 
 ## Report text (ready to send once a contact is confirmed)
 
-**Subject:** Unauthenticated access to archilence-ubuntu-connector tool server (1.0.0–2.5.0)
+**Subject:** Unauthenticated access to archilence-ubuntu-connector tool server (1.0.0–2.6.1)
 
 Hello Archilence team,
 
 While reviewing newly published PyPI releases, we found that the tool server in
 `archilence-ubuntu-connector` accepts requests from anyone who can reach it. This affects every
-published release, 1.0.0 through 2.5.0.
+published release, 1.0.0 through 2.6.1.
 
 **Details**
 
@@ -74,3 +78,33 @@ tell us how you would like to coordinate a fix and a CVE request. Our default is
 after 90 days or once a fixed release is published, whichever comes first.
 
 — OpenSource-For-Freedom / Huginn
+
+---
+
+## Status log
+
+- 2026-10-02: 3-day check. The package is still being released (2.6.0 on 10-01, 2.6.1 on 10-02), with no change
+  to `tool_server.py`. Whether the no-details contact request to `hello@archilence.com` was sent, and whether
+  there was a reply, is not recorded. Confirm with Tim. If it was sent and there was no reply, use the PyPI
+  escalation below.
+
+## PyPI escalation draft (only if Archilence has not replied; do not cc Archilence)
+
+**To:** security@pypi.org  
+**Subject:** Help reaching the owner of archilence-ubuntu-connector about a security issue
+
+Hello PyPI security team,
+
+I found a security issue in the PyPI project `archilence-ubuntu-connector`, affecting every release from
+1.0.0 through 2.6.1 (the current release). In short: unauthenticated access; up to remote command execution
+in some configurations.
+
+The project metadata lists no author, maintainer, homepage or repository. On 2026-09-29 I sent a request for a
+security contact, with no vulnerability details, to the vendor's general address (hello@archilence.com). I have
+not had a reply, and new releases with the same code are still being published.
+
+Could you help me reach the project owner, or pass on my request for a private security contact? I'm happy to
+share the full technical details with PyPI or with the owner privately once a contact is established.
+
+Thanks,
+Tim Burns
