@@ -8,3 +8,7 @@ Every candidate is triaged by static review in `ledger/candidate_queue.csv`. Val
 | Dispatched (UTC) | Registry | Run ID | Aggregate | Scanned | Candidates | Rejected | Deferred | Validated | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 | 03:55 | all six | dispatcher | | | | | | | round 1 |
+| 03:55 | rubygems | 37261335332 | success | 62 | 0 | 0 | 0 | 0 | clean |
+| 03:55 | packagist | 37261333451 | ledger updated (capture gate red: 6 of 40 failed) | 40 | 2 | 2 | 0 | 0 | 5 failed at static_scan (ScanError), 1 at artifact_resolve. Candidates: wpdb::prepare-bound lock name |
+| 03:55 | npm | 37261311800 | success | 100 | 0 | 0 | 0 | 0 | 0 failed; 698 raw findings, no high-value candidates |
+| 03:55 | crates | 37261320044 | success | see run_log | 0 | 0 | 0 | 0 | |
