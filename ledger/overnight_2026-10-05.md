@@ -38,3 +38,26 @@ Every candidate is triaged by static review in `ledger/candidate_queue.csv`. Val
 | 07:54 | packagist | 37280487587 | success | 40 | 58 | 58 | 0 | 0 | 1 failed. Laravel `$request->query()` reads into the query builder (bindings); validated report dates; path param with traversal checks |
 | 07:54 | npm | 37280455144 | success | 100 | 0 | 0 | 0 | 0 | |
 | 07:54 | pypi | 37280428961 | success | 100 | 13 | 13 | 0 | 0 | 1 failed. Repeats (notebook UI) and a deploy CLI using operator config |
+| 07:54 | go | 37280447191 | success | 100 | 4 | 4 | 0 | 0 | Test kit constant SQL; agent tools fetching operator-supplied URLs |
+| 08:52 | five (no go) | per-registry | | | | | | | round 6 (go skipped: could not finish by 10:00) |
+| 08:52 | crates | 37286361626 | success | 13 | 0 | 0 | 0 | 0 | |
+| 08:52 | rubygems | 37286364580 | success | 29 | 0 | 0 | 0 | 0 | |
+| 08:52 | packagist | 37286367940 | success | 40 | 28 | 28 | 0 | 0 | 3 failed. Fleet-management webhooks (hash_equals token check, HMAC-signed links); dev-only SQL console gated on debug mode; repeats |
+| 08:52 | npm | 37286370970 | success | 100 | 0 | 0 | 0 | 0 | |
+| 08:52 | pypi | 37286373518 | success | 87 | 17 | 17 | 0 | 0 | 1 failed. Build tooling (vendored meson), benchmark caches, docs fixtures, a migration recipe docstring |
+
+## Closing summary (written 09:55 UTC; no runs queued or in progress, nothing dispatched after 08:52)
+
+- **Runs:** 33 registry runs over 6 rounds (rubygems 6, packagist 6, npm 6, crates 6, pypi 5, go 4).
+- **Packages scanned:** 2045.
+- **Candidates:** 2107; **rejected** 2106, **deferred** 1, **validated** 0. Queue has 0 PENDING rows.
+- **New rows in `ledger/validated_findings.csv`:** none tonight (still HUGINN-2026-001 to 008; next ID HUGINN-2026-009).
+- **Deferred:** nontainer 0.8.11 agentfs backend pickles kv values (guarded, not a regression of the fixed issue; open question
+  on the cache trust boundary).
+- **Failures:** packagist tripped the capture gate in rounds 1 and 4 (6 and 5 of 40 failed), from artifact_resolve
+  DiscoveryError (no version / dist host not allowed: policy skips) and ScanError; the ledger still updated both times.
+  pypi and go each ran 5 and 4 times because a long run was still in progress when the next round started.
+  Single unscannable packages on npm, pypi and go. No timeouts.
+- **Noise sources:** Go `tainted-sql-query` on any `.Query(` call (one wiki engine alone produced ~1,700 candidates via a
+  mis-cased mirror path), PHP rule on Laravel `$request->query()`, test-teardown innerHTML. Proposal: count packagist
+  policy refusals as skipped rather than failed, and tighten those three rules.
