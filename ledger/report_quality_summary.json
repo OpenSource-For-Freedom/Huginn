@@ -1,8 +1,8 @@
 {
-  "raw_alert_count": 6888,
-  "review_location_group_count": 6887,
-  "incomplete_advisory_checks": 6888,
-  "unverified_version_deltas": 5511,
+  "raw_alert_count": 6894,
+  "review_location_group_count": 6893,
+  "incomplete_advisory_checks": 6894,
+  "unverified_version_deltas": 5517,
   "automatically_approved_reports": 0,
   "note": "Groups are overlapping alerts, not confirmed vulnerabilities. Raw scanner claims remain unverified."
 }
