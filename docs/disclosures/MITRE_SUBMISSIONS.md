@@ -1,6 +1,6 @@
 # MITRE CVE requests — form answers (cveform.mitre.org → "Report Vulnerability/Request CVE ID")
 
-Prepared 2026-10-03. Tim submits each form himself. The CVE ID is assigned by MITRE (CNA of last resort);
+Prepared 2026-10-03; versions rechecked against the latest releases on 2026-10-05. Tim submits each form himself. The CVE ID is assigned by MITRE (CNA of last resort);
 NVD scores and indexes the record after it is published to the CVE List. NVD does not take submissions.
 
 **Existing-CVE check (2026-10-03):** none found for any finding below.
@@ -17,7 +17,7 @@ Fields common to every form:
   reference exists (your advisory, a write-up, or the vendor's fix).
 
 Already handled: **agento-core** (submitted 2026-10-01; awaiting the ID). **filterbymodel**: answers are in
-`filterbymodel.md`.
+`filterbymodel.md` (now v1.0.0 through 1.3.5; config and controllers unchanged in 1.3.5).
 
 ---
 
@@ -25,7 +25,7 @@ Already handled: **agento-core** (submitted 2026-10-01; awaiting the ID). **filt
 
 - **Vulnerability type:** Missing Authentication for Critical Function (CWE-306)
 - **Vendor / product:** Archilence / archilence-ubuntu-connector
-- **Versions:** 1.0.0 through 2.6.1 (all releases; tool_server.py unchanged through 2.6.1)
+- **Versions:** 1.0.0 through 2.7.0 (all releases; the inbound tool server is still unauthenticated in 2.7.0, whose api_key is only sent on outbound calls)
 - **Vendor confirmed:** No (no-details contact request to hello@archilence.com; no reply)
 - **Impact:** Information Disclosure; Code Execution (when `control.allow_exec` is enabled); Denial of Service
   (when `control.enabled`)
@@ -34,7 +34,7 @@ Already handled: **agento-core** (submitted 2026-10-01; awaiting the ID). **filt
 - **Attack vector:** A network attacker sends HTTP requests to the connector's tool server, which binds all
   interfaces and authenticates no inbound request.
 - **Suggested description:**
-  > archilence-ubuntu-connector 1.0.0 through 2.6.1 exposes a Flask tool server on 0.0.0.0:8990 without
+  > archilence-ubuntu-connector 1.0.0 through 2.7.0 exposes a Flask tool server on 0.0.0.0:8990 without
   > authentication. A remote unauthenticated attacker can read host process, container (including
   > environment variables), port, network and systemd journal information. When control features are
   > enabled, the attacker can restart systemd units and restart or stop Docker containers. When
@@ -93,7 +93,7 @@ Already handled: **agento-core** (submitted 2026-10-01; awaiting the ID). **filt
 - **Vulnerability type:** Missing Authentication for Critical Function (CWE-306); OS Command Injection
   (CWE-78)
 - **Vendor / product:** Mike Levin / pipulate
-- **Versions:** 1.2.0 through 2.76 (latest; checked 2026-10-03)
+- **Versions:** 1.2.0 through 2.78 (latest; checked 2026-10-05)
 - **Vendor confirmed:** No
 - **Attack type:** Remote (adjacent network)
 - **Impact:** Code Execution
@@ -103,7 +103,7 @@ Already handled: **agento-core** (submitted 2026-10-01; awaiting the ID). **filt
   /mcp-tool-executor naming the registered shell tool. The command runs through
   asyncio.create_subprocess_shell.
 - **Suggested description:**
-  > pipulate 1.2.0 through 2.76 starts its web server on 0.0.0.0:5001 with no authentication. The
+  > pipulate 1.2.0 through 2.78 starts its web server on 0.0.0.0:5001 with no authentication. The
   > /mcp-tool-executor endpoint dispatches to a tool registry that by default includes
   > execute_shell_command, which runs the supplied command with asyncio.create_subprocess_shell. A remote
   > attacker on the same network can execute arbitrary OS commands as the user running pipulate.
@@ -114,7 +114,7 @@ Already handled: **agento-core** (submitted 2026-10-01; awaiting the ID). **filt
 
 - **Vulnerability type:** OS Command Injection (CWE-78); Incomplete List of Disallowed Inputs (CWE-184)
 - **Vendor / product:** Evgenij Myasnikov / polyglav (bundled plugin polyglav-core-exec)
-- **Versions:** 0.37.0 through 0.38.0 (latest)
+- **Versions:** 0.37.0 through 0.42.0 (latest, checked 2026-10-05; 0.42.0 added newline/heredoc rejection but still prefix-matches and runs with shell=True)
 - **Vendor confirmed:** No
 - **Impact:** Code Execution
 - **Affected component:** `plugins/polyglav-core-exec/src/plugin.py` (`run_command`, `_command_allowed`)
@@ -123,7 +123,7 @@ Already handled: **agento-core** (submitted 2026-10-01; awaiting the ID). **filt
   allow-list check splits only on command separators and matches string prefixes, and the command then runs
   with shell=True.
 - **Suggested description:**
-  > In polyglav 0.37.0 through 0.38.0, the bash_allow command allow-list in the bundled polyglav-core-exec
+  > In polyglav 0.37.0 through 0.42.0, the bash_allow command allow-list in the bundled polyglav-core-exec
   > plugin (_command_allowed in plugin.py) checks only that each separator-delimited segment starts with an
   > allowed prefix, then runs the command with subprocess.run(shell=True). Command substitution,
   > redirection and prefix extension are not rejected, so when tool_permission.bash is set to allow with a
@@ -135,7 +135,7 @@ Already handled: **agento-core** (submitted 2026-10-01; awaiting the ID). **filt
 
 - **Vulnerability type:** SQL Injection (CWE-89)
 - **Vendor / product:** bitechdev / ResolveSpec (`pkg/funcspec`)
-- **Versions:** v0.0.63 through v1.3.2 (latest tag; still affected, checked 2026-10-03)
+- **Versions:** v0.0.63 through v1.3.3 (latest tag; ValidSQL and the ORDER BY path unchanged, checked 2026-10-05)
 - **Vendor confirmed:** No (asked for a private channel via PR #24; no details sent)
 - **Impact:** Information Disclosure
 - **Affected component:** `pkg/funcspec/function_api.go` (`Handler.SqlQueryList`); `ValidSQL` "select"
@@ -144,7 +144,7 @@ Already handled: **agento-core** (submitted 2026-10-01; awaiting the ID). **filt
   query parameter or `x-sort` header. The value is appended to the query's ORDER BY clause after only a
   keyword denylist.
 - **Suggested description:**
-  > In ResolveSpec v0.0.63 through v1.3.2, funcspec Handler.SqlQueryList appends the client-supplied sort
+  > In ResolveSpec v0.0.63 through v1.3.3, funcspec Handler.SqlQueryList appends the client-supplied sort
   > value (sort query parameter or x-sort header) to the SQL ORDER BY clause after filtering it only with a
   > keyword denylist (ValidSQL "select" mode), allowing blind SQL injection against the application
   > database on any route built with SqlQueryList.

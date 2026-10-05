@@ -17,6 +17,7 @@ source is identical in both.
 reaches the agent, such as a web page or a file it reads. It only works when the operator has set
 `tool_permission.bash = allow` with a `bash_allow` list, which is the configuration the list
 exists for. With the default `bash = ask`, the user is still prompted.
+**Rechecked 2026-10-05:** 0.42.0 (2026-10-05) is also affected. `_command_allowed` now rejects newlines and heredocs, but it still only prefix-matches separator-delimited segments, and the command still runs with shell=True. Affected range is now 0.37.0 through 0.42.0.
 
 ---
 

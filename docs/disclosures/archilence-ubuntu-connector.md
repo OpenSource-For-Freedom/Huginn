@@ -17,6 +17,7 @@
 - default configuration (information disclosure): `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N` (7.5)
 - `control.enabled` (unauthenticated service/container restart and stop): `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:H` (9.4)
 - `control.enabled` + `control.allow_exec` (unauthenticated command execution): 9.8
+**Rechecked 2026-10-05:** 2.7.0 (2026-10-02) is also affected. tool_server.py still has no inbound authentication and main.py still binds 0.0.0.0; the new api_key is only sent on outbound calls to Archilence core. Affected range is now 1.0.0 through 2.7.0.
 
 **Contact found:** `hello@archilence.com` (general address, supplied by the owner 2026-09-29). Send the
 no-details contact request there first.  

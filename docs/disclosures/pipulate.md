@@ -15,6 +15,7 @@ execution)
 **Suggested CVSS 3.1:** `AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` (8.8) for an attacker on the same
 network. If a browser delivers the cross-site request (see below), the vector becomes network
 with user interaction, `AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H` (8.8).
+**Rechecked 2026-10-05:** 2.78 (2026-10-05) is also affected: it still binds 0.0.0.0:5001 with no authentication, and `/mcp-tool-executor` still dispatches to `execute_shell_command`. Affected range is now 1.2.0 through 2.78.
 
 ---
 
