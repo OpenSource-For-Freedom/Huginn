@@ -32,3 +32,9 @@ Every candidate is triaged by static review in `ledger/candidate_queue.csv`. Val
 | 06:38 | npm | 37273444736 | success | 100 | 0 | 0 | 0 | 0 | 1 failed |
 | 06:38 | pypi | 37273448279 | success | 80 | 31 | 31 | 0 | 0 | Repeats of earlier decisions (notebook UI rendering, configured hook/test commands, fixed-argv setup helpers) |
 | 06:38 | go | 37273447176 | success | 100 | 1804 | 1804 | 0 | 0 | 1693 from one wiki engine and its mis-cased mirror path, 89 from another app: pgx constant SQL with bound args; test teardown innerHTML; KaTeX-port array sizing |
+| 07:54 | all six | dispatcher | | | | | | | round 5 (last; go expected ~08:55) |
+| 07:54 | crates | 37280438337 | success | 28 | 0 | 0 | 0 | 0 | |
+| 07:54 | rubygems | 37280446988 | success | 53 | 0 | 0 | 0 | 0 | |
+| 07:54 | packagist | 37280487587 | success | 40 | 58 | 58 | 0 | 0 | 1 failed. Laravel `$request->query()` reads into the query builder (bindings); validated report dates; path param with traversal checks |
+| 07:54 | npm | 37280455144 | success | 100 | 0 | 0 | 0 | 0 | |
+| 07:54 | pypi | 37280428961 | success | 100 | 13 | 13 | 0 | 0 | 1 failed. Repeats (notebook UI) and a deploy CLI using operator config |
