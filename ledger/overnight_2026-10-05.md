@@ -11,4 +11,11 @@ Every candidate is triaged by static review in `ledger/candidate_queue.csv`. Val
 | 03:55 | rubygems | 37261335332 | success | 62 | 0 | 0 | 0 | 0 | clean |
 | 03:55 | packagist | 37261333451 | ledger updated (capture gate red: 6 of 40 failed) | 40 | 2 | 2 | 0 | 0 | 5 failed at static_scan (ScanError), 1 at artifact_resolve. Candidates: wpdb::prepare-bound lock name |
 | 03:55 | npm | 37261311800 | success | 100 | 0 | 0 | 0 | 0 | 0 failed; 698 raw findings, no high-value candidates |
-| 03:55 | crates | 37261320044 | success | see run_log | 0 | 0 | 0 | 0 | |
+| 03:55 | crates | 37261320044 | success | 100 | 0 | 0 | 0 | 0 | 41 known-CVE rows |
+| 03:55 | pypi | 37261318941 | success | 100 | 25 | 25 | 0 | 0 | 1 failed. Agent-runtime test teardown and own-kernel snapshots; local CLI/installer subprocesses |
+| 03:55 | go | 37261319486 | success | 100 | 1 | 1 | 0 | 0 | 13,168 known-CVE rows; release-script regex |
+| 04:47 | crates | 37265019275 | success | 17 | 0 | 0 | 0 | 0 | |
+| 04:47 | rubygems | 37265017544 | success | 9 | 0 | 0 | 0 | 0 | |
+| 04:47 | packagist | 37265020885 | success | (in run_log) | 6 | 6 | 0 | 0 | Laravel CMS: `$request->query()` reads; app-key-gated monitoring SSO (hardening note only) |
+| 04:47 | npm | 37265016078 | success | 100 | 0 | 0 | 0 | 0 | |
+| 05:45 | all six | dispatcher | | | | | | | round 3 |
