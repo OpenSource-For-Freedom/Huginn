@@ -26,3 +26,9 @@ Every candidate is triaged by static review in `ledger/candidate_queue.csv`. Val
 | 05:37 | pypi | 37268613656 | success | 100 | 48 | 47 | 1 | 0 | 1 failed. Deferred: nontainer 0.8.11 new agentfs backend pickles kv values (guarded; not a regression; open cache trust question). Rest: local agent/CLI tools running operator commands |
 | 05:37 | go | 37268623800 | success | 100 | 45 | 45 | 0 | 0 | 1 failed. Dev worktree scripts, non-SQL Query methods (ABCI, GraphQL, device), allow-listed grid filters |
 | 06:50 | all six | dispatcher | | | | | | | round 4 (last that can finish before 10:00) |
+| 06:38 | rubygems | 37273447211 | success | 16 | 0 | 0 | 0 | 0 | |
+| 06:38 | crates | 37273444201 | success | 21 | 0 | 0 | 0 | 0 | |
+| 06:38 | packagist | 37273468896 | gate failed | 40 | 25 | 25 | 0 | 0 | 5 failed at artifact_resolve (DiscoveryError: no version / dist host not allowed, i.e. policy skips); ledger still updated. Laravel `$request->query()` reads, date params validated + Carbon-normalised before DB::raw, Go template Query in a CLI scaffolder |
+| 06:38 | npm | 37273444736 | success | 100 | 0 | 0 | 0 | 0 | 1 failed |
+| 06:38 | pypi | 37273448279 | success | 80 | 31 | 31 | 0 | 0 | Repeats of earlier decisions (notebook UI rendering, configured hook/test commands, fixed-argv setup helpers) |
+| 06:38 | go | 37273447176 | success | 100 | 1804 | 1804 | 0 | 0 | 1693 from one wiki engine and its mis-cased mirror path, 89 from another app: pgx constant SQL with bound args; test teardown innerHTML; KaTeX-port array sizing |
