@@ -9,6 +9,7 @@ reporting on `bitechdev/ResolveSpec` if it is enabled (Security tab); otherwise 
 **Weakness:** CWE-89 (SQL injection)  
 **Suggested CVSS 3.1:** `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N` (7.5) where the route is public;
 `PR:L` (6.5) where the application puts the route behind authentication.
+**Rechecked 2026-10-05:** v1.3.3 is also affected. ValidSQL is byte-identical, and SqlQueryList still appends the sort value to ORDER BY. Affected range is now v0.0.63 through v1.3.3.
 
 ---
 
