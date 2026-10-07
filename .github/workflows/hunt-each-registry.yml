@@ -13,25 +13,25 @@ on:
         default: all
         options: [all, updates, new]
       limit:
-        description: Releases per ecosystem, or auto for the budgeted defaults (go 300, pypi 400, npm 400, crates 200, rubygems 200, packagist 120)
+        description: Releases per ecosystem, or auto for the budgeted defaults (go 170, pypi 220, npm 220, crates 120, rubygems 130, packagist 80)
         required: true
         default: "auto"
       window_days:
         description: Look back this many days (every release is listed; a spread-out selection up to the limit is scanned)
         required: true
-        default: "15"
-  # Twice a month, 06:17 UTC on the 1st and 15th. Each run looks back 15 days, so the two runs
-  # together cover the month. The budget job below still refuses a run that would overspend.
+        default: "7"
+  # Weekly, Sundays 06:17 UTC (02:17 ET). Each run looks back 7 days, so runs cover every week.
+  # The budget job below keeps Huginn under 500 Actions minutes in any 7 days.
   schedule:
-    - cron: "17 6 1,15 * *"
+    - cron: "17 6 * * 0"
 
 permissions:
   contents: read
 
 jobs:
-  # Budget guard (GitHub Pro: 3,000 included minutes). If this month's minutes plus this run's cap
-  # would pass the budget (repository variable HUGINN_MONTHLY_MINUTES, default 2900), the run is
-  # scaled down to the minutes left; it is refused only when fewer than 150 remain.
+  # Budget guard: 500 Actions minutes per rolling 7 days (repository variable
+  # HUGINN_WEEKLY_MINUTES). If the minutes Huginn used in the last 7 days plus this run's cap would
+  # pass it, the run is scaled down to the minutes left; it is refused when fewer than 75 remain.
   budget:
     name: Check Actions budget
     runs-on: ubuntu-latest
@@ -52,15 +52,15 @@ jobs:
         id: minutes
         env:
           GH_TOKEN: ${{ github.token }}
-          BUDGET: ${{ vars.HUGINN_MONTHLY_MINUTES || '2900' }}
-          # The per-registry caps below (790) plus setup and reporting jobs (~30).
-          PLANNED: "820"
+          BUDGET: ${{ vars.HUGINN_WEEKLY_MINUTES || '500' }}
+          # The per-registry caps below (440) plus setup and reporting jobs (~30).
+          PLANNED: "470"
         # Each job is billed rounded up to the minute. Dependabot (event "dynamic") is not billed.
-        # Counts from the first of the month (UTC); the billing cycle may differ, so it is an estimate.
+        # Counts every run created in the last 7 days, including CI and manual hunts.
         run: |
           python3 - <<'PY'
           import json, math, os, sys, urllib.request
-          from datetime import UTC, datetime
+          from datetime import UTC, datetime, timedelta
 
           def get(path):
               req = urllib.request.Request(
@@ -74,10 +74,11 @@ jobs:
               return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
           now = datetime.now(UTC)
+          since = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
           repo = os.environ["GITHUB_REPOSITORY"]
           used, page = 0, 1
           while True:
-              runs = get(f"/repos/{repo}/actions/runs?created=%3E%3D{now:%Y-%m-01}&per_page=100&page={page}")["workflow_runs"]
+              runs = get(f"/repos/{repo}/actions/runs?created=%3E%3D{since}&per_page=100&page={page}")["workflow_runs"]
               for run in runs:
                   if run.get("event") == "dynamic":
                       continue
@@ -94,12 +95,12 @@ jobs:
 
           budget, planned = int(os.environ["BUDGET"]), int(os.environ["PLANNED"])
           remaining = budget - used
-          ok = remaining >= 150
+          ok = remaining >= 75
           scale = 1.0 if remaining >= planned else max(0.0, remaining / planned)
-          lines = [f"Minutes used this month (estimate): {used}", f"Monthly budget: {budget} (remaining {remaining})",
+          lines = [f"Minutes used in the last 7 days (estimate): {used}", f"Weekly budget: {budget} (remaining {remaining})",
                    f"Full run is capped at about {planned} minutes"]
           if not ok:
-              lines.append("Budget check: REFUSED - fewer than 150 minutes left this month")
+              lines.append("Budget check: REFUSED - fewer than 75 minutes left in the 7-day budget")
           elif scale < 1:
               lines.append(f"Budget check: OK, scaled to {scale:.0%} (about {int(planned * scale)} minutes)")
           else:
@@ -123,15 +124,15 @@ jobs:
       fail-fast: false
       matrix:
         # limit = default releases to scan; minutes = hard cap on the capture (about 0.35-0.55 min
-        # per package, measured October 2026). One full run stays near 820 Actions minutes, so two
-        # runs a month (about 1,640) leave room in the 3,000 included minutes.
+        # per package, measured October 2026). One full run stays near 470 Actions minutes, under
+        # the 500-minute weekly budget.
         include:
-          - {ecosystem: npm, limit: 400, minutes: 160}
-          - {ecosystem: pypi, limit: 400, minutes: 190}
-          - {ecosystem: rubygems, limit: 200, minutes: 90}
-          - {ecosystem: crates, limit: 200, minutes: 100}
-          - {ecosystem: packagist, limit: 120, minutes: 70}
-          - {ecosystem: go, limit: 300, minutes: 180}
+          - {ecosystem: npm, limit: 220, minutes: 90}
+          - {ecosystem: pypi, limit: 220, minutes: 105}
+          - {ecosystem: rubygems, limit: 130, minutes: 50}
+          - {ecosystem: crates, limit: 120, minutes: 55}
+          - {ecosystem: packagist, limit: 80, minutes: 40}
+          - {ecosystem: go, limit: 170, minutes: 100}
 
     steps:
       - name: Legion Runner
@@ -147,7 +148,7 @@ jobs:
           LIMIT: ${{ inputs.limit || 'auto' }}
           DEFAULT_LIMIT: ${{ matrix.limit }}
           MAX_MINUTES: ${{ matrix.minutes }}
-          WINDOW_DAYS: ${{ inputs.window_days || '15' }}
+          WINDOW_DAYS: ${{ inputs.window_days || '7' }}
           ECOSYSTEM: ${{ matrix.ecosystem }}
           SCALE: ${{ needs.budget.outputs.scale }}
         run: |
@@ -158,7 +159,7 @@ jobs:
           if ! [[ "$SCALE" =~ ^[01]\.[0-9]{3}$ ]]; then
             echo "::error::budget job did not report a scale"; exit 1
           fi
-          # Shrink the batch and its minute cap to fit what is left of the monthly budget.
+          # Shrink the batch and its minute cap to fit what is left of the weekly budget.
           LIMIT=$(awk -v n="$LIMIT" -v f="$SCALE" 'BEGIN { v = int(n * f); print (v < 10 ? 10 : v) }')
           MAX_MINUTES=$(awk -v n="$MAX_MINUTES" -v f="$SCALE" 'BEGIN { v = int(n * f); print (v < 10 ? 10 : v) }')
           echo "$ECOSYSTEM: limit $LIMIT, capped at $MAX_MINUTES minutes"
