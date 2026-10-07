@@ -127,6 +127,7 @@ def main() -> None:
         "high_coverage_alert_count": sum(int(s.get("high_coverage_alert_count", 0)) for s in summaries),
         "malware_confirmed_count": sum(int(s.get("malware_confirmed_count", 0)) for s in summaries),
         "malware_new_risk_count": sum(int(s.get("malware_new_risk_count", 0)) for s in summaries),
+        "malware_suspicious_count": sum(int(s.get("malware_suspicious_count", 0)) for s in summaries),
         "malware_scanned_count": sum(int(s.get("malware_scanned_count", 0)) for s in summaries),
         "malware_failed_count": sum(int(s.get("malware_failed_count", 0)) for s in summaries),
         "automatic_disclosure": False,

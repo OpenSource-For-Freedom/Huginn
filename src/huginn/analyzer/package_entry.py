@@ -59,6 +59,8 @@ def analyze_package(src: Path, name: str, ecosystem: str, work: Path | None = No
         "scanners": result.scanners,
         "bash_findings": [_finding(f) for f in result.bash_findings][:_MAX_FINDINGS],
         "confirming_findings": [_finding(f) for f in result.confirming_findings],
+        "egress": result.egress,
+        "egress_findings": [_finding(f) for f in result.egress_findings],
         "package": {"name": name, "ecosystem": ecosystem, "exposed_dirs": exposed},
     }
 

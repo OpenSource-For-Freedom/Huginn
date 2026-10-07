@@ -59,7 +59,9 @@ def summary_embed(summary: dict, *, run_url: str = "") -> dict:
     color = _RED if confirmed else (_ORANGE if gaps else _GREEN)
     title = "Huginn hunt complete" + (" (coverage gaps)" if gaps else "")
     malware = (f"{confirmed} confirmed · {_n(summary, 'malware_new_risk_count')} new risk "
-               f"· {_n(summary, 'malware_scanned_count')} analyzed")
+               + (f"· {_n(summary, 'malware_suspicious_count')} suspicious (no egress) "
+                  if _n(summary, "malware_suspicious_count") else "")
+               + f"· {_n(summary, 'malware_scanned_count')} analyzed")
     if not _n(summary, "malware_scanned_count") and scanned:
         malware += " (analyzer not configured)"
     embed = {
