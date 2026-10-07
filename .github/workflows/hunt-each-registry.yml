@@ -20,6 +20,11 @@ on:
         description: Look back this many days (every release is listed; a spread-out selection up to the limit is scanned)
         required: true
         default: "15"
+      ignore_budget:
+        description: Run even when the 7-day Actions budget is spent (manual one-off; per-registry minute caps still apply)
+        required: false
+        type: boolean
+        default: false
   # Twice a month, 06:17 UTC (02:17 ET) on the 1st and 15th. Each run looks back 15 days, so the
   # two runs cover the month. The budget job below keeps Huginn under 500 Actions minutes in any 7 days.
   schedule:
@@ -53,6 +58,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUDGET: ${{ vars.HUGINN_WEEKLY_MINUTES || '500' }}
+          # Manual override only: scheduled runs have no inputs, so this is false for them.
+          IGNORE_BUDGET: ${{ inputs.ignore_budget && 'true' || 'false' }}
           # The per-registry caps below (440) plus setup and reporting jobs (~30).
           PLANNED: "470"
         # Each job is billed rounded up to the minute. Dependabot (event "dynamic") is not billed.
@@ -99,7 +106,11 @@ jobs:
           scale = 1.0 if remaining >= planned else max(0.0, remaining / planned)
           lines = [f"Minutes used in the last 7 days (estimate): {used}", f"Weekly budget: {budget} (remaining {remaining})",
                    f"Full run is capped at about {planned} minutes"]
-          if not ok:
+          if not ok and os.environ.get("IGNORE_BUDGET") == "true":
+              lines.append("Budget check: BYPASSED by ignore_budget on a manual dispatch "
+                           "(fewer than 75 minutes left); running at the requested size")
+              ok, scale = True, 1.0
+          elif not ok:
               lines.append("Budget check: REFUSED - fewer than 75 minutes left in the 7-day budget")
           elif scale < 1:
               lines.append(f"Budget check: OK, scaled to {scale:.0%} (about {int(planned * scale)} minutes)")
