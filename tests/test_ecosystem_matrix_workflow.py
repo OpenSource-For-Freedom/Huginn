@@ -58,6 +58,10 @@ class EcosystemMatrixWorkflowTests(unittest.TestCase):
         self.assertIn("vars.HUGINN_WEEKLY_MINUTES || '500'", dispatcher)
         self.assertIn("needs.budget.outputs.scale", dispatcher)
         self.assertIn('default: "auto"', dispatcher)
+        # The override is opt-in on manual runs only and logged when used.
+        self.assertIn("ignore_budget:", dispatcher)
+        self.assertIn("IGNORE_BUDGET: ${{ inputs.ignore_budget && 'true' || 'false' }}", dispatcher)
+        self.assertIn("Budget check: BYPASSED", dispatcher)
 
 if __name__ == "__main__":
     unittest.main()
