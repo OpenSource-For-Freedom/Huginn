@@ -64,7 +64,7 @@ def _malware_verdict(candidate, artifact, sha256, first_seen, run, outcome, prev
 
     The previous release is scanned only for a NEW_VERSION that carries a risky
     mechanism, and reused from the CVE comparison when that already scanned it.
-    Never raises: a failed comparison leaves the row on Warden's verdict alone.
+    Never raises: a failed comparison leaves the row on the analyzer's verdict alone.
     """
     if outcome.malware_status != "COMPLETE":
         return None
@@ -373,15 +373,14 @@ def main() -> None:
     if all_manifests and malware_counts["malware_not_configured_count"]:
         all_alerts.append(make_alert(
             run_id=run, registry=args.registry, stage="malware_analysis",
-            alert_type="MALWARE_SCAN_NOT_CONFIGURED", source="HUGINN_WARDEN_IMAGE",
-            message="Malicious-package analysis did not run: no git_warden image configured.",
+            alert_type="MALWARE_SCAN_NOT_CONFIGURED", source="HUGINN_ANALYZER_IMAGE",
+            message="Malicious-package analysis did not run: no analyzer image configured.",
             severity="MEDIUM", coverage_impact="MALWARE_NOT_ANALYZED",
-            recommended_action="Set the WARDEN_READ_TOKEN secret so the hunt can build "
-                               "the git_warden image."))
+            recommended_action="Check the 'Build malware analyzer' step of the capture job."))
     if malware_counts["malware_failed_count"]:
         all_alerts.append(make_alert(
             run_id=run, registry=args.registry, stage="malware_analysis",
-            alert_type="MALWARE_SCAN_FAILED", source="git_warden.package_entry",
+            alert_type="MALWARE_SCAN_FAILED", source="huginn_analyzer.package_entry",
             message=f"{malware_counts['malware_failed_count']} package(s) were not analyzed "
                     "for malware; see malware_error in scan_manifest.csv.",
             severity="HIGH", coverage_impact="PARTIAL"))
