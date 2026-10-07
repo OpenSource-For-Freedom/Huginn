@@ -56,6 +56,7 @@ def main() -> None:
     review_fields, review_rows = read_csvs(args.input_root, "review_findings.csv")
     manifest_fields, manifest_rows = read_csvs(args.input_root, "scan_manifest.csv")
     alert_fields, alert_rows = read_csvs(args.input_root, "operational_alerts.csv")
+    malware_fields, malware_rows = read_csvs(args.input_root, "malicious_findings.csv")
     summaries = load_summaries(args.input_root)
 
     if review_fields:
@@ -91,6 +92,17 @@ def main() -> None:
         )
         write_csv(args.output_root / "operational_alerts.csv", alert_fields, alert_rows)
 
+    if malware_fields:
+        malware_rows.sort(
+            key=lambda row: (
+                row.get("verdict") != "CONFIRMED",
+                row.get("registry", ""),
+                row.get("package_name", ""),
+                row.get("package_version", ""),
+            )
+        )
+        write_csv(args.output_root / "malicious_findings.csv", malware_fields, malware_rows)
+
     aggregate = {
         "ecosystem_runs": summaries,
         "ecosystem_count": len(summaries),
@@ -113,6 +125,10 @@ def main() -> None:
         "operational_alert_count": sum(int(s.get("operational_alert_count", 0)) for s in summaries),
         "critical_coverage_alert_count": sum(int(s.get("critical_coverage_alert_count", 0)) for s in summaries),
         "high_coverage_alert_count": sum(int(s.get("high_coverage_alert_count", 0)) for s in summaries),
+        "malware_confirmed_count": sum(int(s.get("malware_confirmed_count", 0)) for s in summaries),
+        "malware_new_risk_count": sum(int(s.get("malware_new_risk_count", 0)) for s in summaries),
+        "malware_scanned_count": sum(int(s.get("malware_scanned_count", 0)) for s in summaries),
+        "malware_failed_count": sum(int(s.get("malware_failed_count", 0)) for s in summaries),
         "automatic_disclosure": False,
         "automatic_cve_submission": False,
     }
@@ -127,6 +143,7 @@ def main() -> None:
         f"merged {len(summaries)} ecosystem run(s), "
         f"{len(manifest_rows)} package scan(s), "
         f"{len(review_rows)} finding(s), "
+        f"{len(malware_rows)} malicious-package row(s), "
         f"{len(alert_rows)} operational alert(s)"
     )
 

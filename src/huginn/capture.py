@@ -14,6 +14,7 @@ from pathlib import Path
 from .advisory import AdvisoryClient, enrich_rows
 from .alerts import alerts_from_findings, alerts_from_manifests, make_alert
 from .discovery import USER_AGENT, PolicySkip, discover, previous_release, resolve_artifact
+from .malware import MALWARE_COLUMNS, malware_row, needs_previous, summary_counts
 from .window import discover_window
 from .models import Artifact
 from .reporting import ALERT_COLUMNS, MANIFEST_COLUMNS, REVIEW_COLUMNS, normalize_semgrep, normalize_trivy, write_csv
@@ -57,6 +58,41 @@ def download(artifact: Artifact, dest: Path, max_bytes: int) -> tuple[str, int]:
     return digest, total
 
 
+def _malware_verdict(candidate, artifact, sha256, first_seen, run, outcome, previous_outcome,
+                     known_previous_version: str, workdir: Path, scanner, max_artifact_bytes):
+    """Malware row for one release, comparing with its previous release when needed.
+
+    The previous release is scanned only for a NEW_VERSION that carries a risky
+    mechanism, and reused from the CVE comparison when that already scanned it.
+    Never raises: a failed comparison leaves the row on Warden's verdict alone.
+    """
+    if outcome.malware_status != "COMPLETE":
+        return None
+    prev_result, prev_status, prev_version = None, "NOT_NEEDED", ""
+    if needs_previous(candidate, outcome.malware):
+        try:
+            if previous_outcome is not None and previous_outcome.malware_status == "COMPLETE":
+                prev_result, prev_status = previous_outcome.malware, "COMPLETE"
+                prev_version = known_previous_version
+            else:
+                previous = previous_release(candidate)
+                if previous is None:
+                    prev_status = "UNAVAILABLE"
+                else:
+                    prev_version = previous.version
+                    prev_art = resolve_artifact(previous)
+                    suffix = "".join(Path(prev_art.filename).suffixes)[-20:] or ".bin"
+                    prev_path = workdir / f"malware-previous{suffix}"
+                    download(prev_art, prev_path, max_artifact_bytes)
+                    prev_result, prev_status, _err = scanner.malware_only(
+                        prev_path, package_name=candidate.name, ecosystem=candidate.registry)
+        except Exception:  # noqa: BLE001 - comparison is best effort
+            prev_result, prev_status = None, "FAILED"
+    return malware_row(run_id=run, candidate=candidate, artifact=artifact, sha256=sha256,
+                       first_seen=first_seen, result=outcome.malware, previous=prev_result,
+                       previous_version=prev_version, previous_status=prev_status)
+
+
 def capture_registry(
     registry: str,
     mode: str,
@@ -70,6 +106,7 @@ def capture_registry(
     window_days: int = 0,
     max_minutes: float = 0,
     clock=time.monotonic,
+    malware_sink: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     findings: list[dict] = []
     manifests: list[dict] = []
@@ -100,6 +137,7 @@ def capture_registry(
             "scan_status": "STARTED", "scan_started_at_utc": utc_now(), "scan_finished_at_utc": "",
             "trivy_exit_code": "", "semgrep_exit_code": "", "finding_count": "0",
             "failure_stage": "", "error": "",
+            "malware_status": "", "malware_verdict": "", "malware_error": "",
         }
         stage = "artifact_resolve"
         try:
@@ -119,7 +157,8 @@ def capture_registry(
                 manifest["artifact_size_bytes"] = str(size)
 
                 stage = "static_scan"
-                outcome = scanner.scan(artifact_path)
+                outcome = scanner.scan(artifact_path, package_name=candidate.name,
+                                       ecosystem=candidate.registry)
                 semgrep_version = str(outcome.semgrep.get("version") or "")
                 rows = normalize_trivy(
                     outcome.trivy,
@@ -150,6 +189,7 @@ def capture_registry(
                 enrich_rows(rows, advisory, checked_at=utc_now())
 
                 previous_version = ""
+                previous_outcome = None
                 previous_keys: set[tuple[str, str]] = set()
                 previous_status = "NOT_NEEDED"
                 previous_error = ""
@@ -171,7 +211,9 @@ def capture_registry(
                             previous_suffix = "".join(Path(previous_artifact.filename).suffixes)[-20:] or ".bin"
                             previous_path = Path(td) / f"previous{previous_suffix}"
                             download(previous_artifact, previous_path, max_artifact_bytes)
-                            previous_outcome = scanner.scan(previous_path)
+                            previous_outcome = scanner.scan(
+                                previous_path, package_name=candidate.name,
+                                ecosystem=candidate.registry)
                             previous_keys = {
                                 (str(item.get("check_id") or ""), str(item.get("path") or ""))
                                 for item in (previous_outcome.semgrep.get("results") or [])
@@ -190,6 +232,17 @@ def capture_registry(
                     previous_compare_error=previous_error,
                 )
                 findings.extend(rows)
+
+                stage = "malware_analysis"
+                manifest["malware_status"] = outcome.malware_status
+                manifest["malware_error"] = outcome.malware_error
+                row = _malware_verdict(
+                    candidate, artifact, sha256, first_seen, run, outcome, previous_outcome,
+                    previous_version, Path(td), scanner, max_artifact_bytes)
+                if row:
+                    manifest["malware_verdict"] = row["verdict"]
+                    if malware_sink is not None:
+                        malware_sink.append(row)
 
                 manifest["trivy_exit_code"] = str(outcome.trivy_exit_code)
                 manifest["semgrep_exit_code"] = str(outcome.semgrep_exit_code)
@@ -267,6 +320,7 @@ def main() -> None:
     all_findings: list[dict] = []
     all_manifests: list[dict] = []
     all_alerts: list[dict] = []
+    all_malware: list[dict] = []
     for registry in registries:
         try:
             findings, manifests = capture_registry(
@@ -281,6 +335,7 @@ def main() -> None:
                 args.max_artifact_bytes,
                 args.window_days,
                 args.max_minutes,
+                malware_sink=all_malware,
             )
         except Exception as exc:
             all_alerts.append(
@@ -314,6 +369,25 @@ def main() -> None:
     )
     write_csv(out_dir / "review_findings.csv", REVIEW_COLUMNS, all_findings)
     write_csv(out_dir / "scan_manifest.csv", MANIFEST_COLUMNS, all_manifests)
+    malware_counts = summary_counts(all_malware, all_manifests)
+    if all_manifests and malware_counts["malware_not_configured_count"]:
+        all_alerts.append(make_alert(
+            run_id=run, registry=args.registry, stage="malware_analysis",
+            alert_type="MALWARE_SCAN_NOT_CONFIGURED", source="HUGINN_WARDEN_IMAGE",
+            message="Malicious-package analysis did not run: no git_warden image configured.",
+            severity="MEDIUM", coverage_impact="MALWARE_NOT_ANALYZED",
+            recommended_action="Set the WARDEN_READ_TOKEN secret so the hunt can build "
+                               "the git_warden image."))
+    if malware_counts["malware_failed_count"]:
+        all_alerts.append(make_alert(
+            run_id=run, registry=args.registry, stage="malware_analysis",
+            alert_type="MALWARE_SCAN_FAILED", source="git_warden.package_entry",
+            message=f"{malware_counts['malware_failed_count']} package(s) were not analyzed "
+                    "for malware; see malware_error in scan_manifest.csv.",
+            severity="HIGH", coverage_impact="PARTIAL"))
+    all_malware.sort(key=lambda r: (r.get("verdict") != "CONFIRMED", r.get("registry", ""),
+                                    r.get("package_name", ""), r.get("package_version", "")))
+    write_csv(out_dir / "malicious_findings.csv", MALWARE_COLUMNS, all_malware)
     write_csv(out_dir / "operational_alerts.csv", ALERT_COLUMNS, all_alerts)
 
     summary = {
@@ -347,6 +421,8 @@ def main() -> None:
         "operational_alert_count": len(all_alerts),
         "critical_coverage_alert_count": sum(1 for row in all_alerts if row.get("severity") == "CRITICAL"),
         "high_coverage_alert_count": sum(1 for row in all_alerts if row.get("severity") == "HIGH"),
+        **malware_counts,
+        "malicious_findings_csv": "malicious_findings.csv",
         "review_csv": "review_findings.csv",
         "manifest_csv": "scan_manifest.csv",
         "operational_alerts_csv": "operational_alerts.csv",
