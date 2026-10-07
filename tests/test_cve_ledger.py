@@ -7,7 +7,10 @@ import unittest
 from pathlib import Path
 
 from huginn.reporting import REVIEW_COLUMNS
-from scripts.update_cve_ledger import LEDGER_COLUMNS, RUN_LOG_COLUMNS, check_ledger, read_ledger, read_rows, update, write_rows
+from scripts.update_cve_ledger import (
+    FINDINGS_COLUMNS, LEDGER_COLUMNS, RUN_LOG_COLUMNS, check_ledger, read_ledger, read_rows,
+    sync_validated_findings, update, write_rows,
+)
 
 
 def finding(**overrides):
@@ -202,6 +205,32 @@ class CveLedgerTests(unittest.TestCase):
             with (ledger_dir / "big.csv").open("wb") as f:
                 f.truncate(91 * 1024 * 1024)
             self.assertTrue(any("big.csv" in e for e in check_ledger(ledger_dir)))
+
+
+class ValidatedFindingsTests(unittest.TestCase):
+    def test_new_validated_package_gets_a_pending_row_and_curated_rows_are_kept(self):
+        with tempfile.TemporaryDirectory() as td:
+            ledger = Path(td)
+            curated = {c: "x" for c in FINDINGS_COLUMNS}
+            curated.update(finding_id="HUGINN-2026-004", package="Known/Pkg", cvss4_score="8.7")
+            write_rows(ledger / "validated_findings.csv", FINDINGS_COLUMNS, [curated])
+            queue = [
+                {"review_status": "VALIDATED", "package_name": "known/pkg", "package_version": "2.0"},
+                {"review_status": "VALIDATED", "package_name": "fresh", "package_version": "1.1", "registry": "pypi",
+                 "severity": "HIGH", "cwe": "CWE-78", "reviewer_decision": "true positive: shell injection",
+                 "verified_at_utc": "2026-10-07T00:00:00Z", "disclosure_reference": "docs/disclosures/fresh.md"},
+                {"review_status": "REJECTED", "package_name": "noise", "package_version": "1.0"},
+            ]
+            self.assertEqual(sync_validated_findings(ledger, queue, "h1", "2026-10-07T00:00:00Z"), 1)
+            self.assertEqual(sync_validated_findings(ledger, queue, "h2", "2026-10-08T00:00:00Z"), 0)
+            rows = read_rows(ledger / "validated_findings.csv")
+        self.assertEqual(rows[0]["cvss4_score"], "8.7")
+        new = rows[1]
+        self.assertEqual(new["finding_id"], "HUGINN-2026-005")
+        self.assertEqual(new["package"], "fresh")
+        self.assertEqual(new["cvss4_score"], "PENDING")
+        self.assertEqual(new["disclosure_draft"], "docs/disclosures/fresh.md")
+        self.assertTrue(all(new[c] for c in FINDINGS_COLUMNS))
 
 
 if __name__ == "__main__":

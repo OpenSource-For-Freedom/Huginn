@@ -10,6 +10,10 @@ Huginn does **not** execute, install, detonate, or emulate discovered packages. 
 
 Owner: **OpenSource-For-Freedom**
 
+## Validated findings
+
+The list of true findings is [`ledger/validated_findings.csv`](../huginn-ledger/ledger/validated_findings.csv) on the `huginn-ledger` branch: one row per validated vulnerability (`HUGINN-YYYY-NNN`) with affected versions, CVSS 4.0, CWE, disclosure draft and CVE status. Every hunt updates it: a package an analyst marks `VALIDATED` in `ledger/candidate_queue.csv` gets a new row with `PENDING` CVSS and disclosure fields, and curated rows are never overwritten.
+
 ## Project requirements
 
 See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the Planning, Architecture, Design, Security, and recommended technology stack requirements.

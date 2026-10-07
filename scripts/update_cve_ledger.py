@@ -13,6 +13,10 @@ capture workflow after every hunt):
 * ``candidate_queue.csv`` - high-value manual candidates awaiting analyst review, full review
   columns, deduplicated by finding fingerprint. Analyst edits to review fields are preserved.
 * ``run_log.csv`` - one row per hunt run.
+* ``validated_findings.csv`` - the true-findings list: one row per validated vulnerability
+  (``HUGINN-YYYY-NNN``). Rows are curated by the analyst (CVSS, summary, disclosure and CVE status)
+  and never overwritten; every run appends a ``PENDING`` row for any package an analyst has
+  marked ``VALIDATED`` in the queue that the list does not have yet.
 
 Sink-only scanner output is never promoted automatically.
 """
@@ -67,6 +71,13 @@ LEGACY_LEDGER = "cve_ledger.csv"
 MAX_FILE_BYTES = 90 * 1024 * 1024
 NOT_APPLICABLE = "NOT_APPLICABLE"
 NO_FIX = "NO_FIX_AVAILABLE"
+FINDINGS_FILE = "validated_findings.csv"
+FINDINGS_COLUMNS = [
+    "finding_id", "package", "registry", "affected_versions", "fixed_version", "severity", "cvss4_vector",
+    "cvss4_score", "cwe", "summary", "validated_at_utc", "found_in_hunt", "disclosure_draft", "vendor_contact",
+    "cve_id", "status",
+]
+PENDING = "PENDING"
 
 
 def utc_now() -> str:
@@ -188,6 +199,59 @@ def blank_columns(row: dict[str, str], columns: list[str]) -> list[str]:
     return [c for c in columns if not (row.get(c) or "").strip()]
 
 
+def sync_validated_findings(ledger_dir: Path, queue_rows: list[dict[str, str]], hunt_id: str, now: str) -> int:
+    """Append a PENDING row to validated_findings.csv for each newly validated package.
+
+    Existing rows are analyst-curated and left exactly as they are. Packages are matched
+    case-insensitively, so mirror paths that differ only in case count as one finding.
+    """
+    path = ledger_dir / FINDINGS_FILE
+    findings = read_rows(path)
+    known = {_v(row, "package").lower() for row in findings}
+    validated: dict[str, list[dict[str, str]]] = {}
+    for row in queue_rows:
+        if _v(row, "review_status").upper() == "VALIDATED" and _v(row, "package_name"):
+            validated.setdefault(_v(row, "package_name").lower(), []).append(row)
+
+    year = now[:4]
+    numbers = [int(m.group(1)) for row in findings
+               if (m := re.fullmatch(rf"HUGINN-{year}-(\d+)", _v(row, "finding_id")))]
+    next_number = max(numbers, default=0) + 1
+    added = 0
+    for key in sorted(validated):
+        if key in known:
+            continue
+        rows = validated[key]
+        first = rows[0]
+        versions = sorted({_v(r, "package_version") for r in rows if _v(r, "package_version")})
+        severities = [_v(r, "severity").upper() for r in rows if _v(r, "severity").upper() in SEVERITIES]
+        reference = _v(first, "disclosure_reference")
+        findings.append({
+            "finding_id": f"HUGINN-{year}-{next_number:03d}",
+            "package": _v(first, "package_name"),
+            "registry": _v(first, "registry") or "unknown",
+            "affected_versions": ";".join(versions) + " (scanned; full range pending)" if versions else PENDING,
+            "fixed_version": PENDING,
+            "severity": min(severities, key=SEVERITIES.index) if severities else PENDING,
+            "cvss4_vector": PENDING,
+            "cvss4_score": PENDING,
+            "cwe": _cwe(first),
+            "summary": (_v(first, "reviewer_decision") or _v(first, "title") or PENDING)[:300],
+            "validated_at_utc": _v(first, "verified_at_utc") or now,
+            "found_in_hunt": _v(first, "run_id") or hunt_id,
+            "disclosure_draft": reference if reference.startswith("docs/") else PENDING,
+            "vendor_contact": "NOT_CONTACTED",
+            "cve_id": "NOT_REQUESTED",
+            "status": "OPEN",
+        })
+        known.add(key)
+        next_number += 1
+        added += 1
+    if added:
+        write_rows(path, FINDINGS_COLUMNS, findings)
+    return added
+
+
 def update(packet: Path, ledger_dir: Path, hunt_id: str, now: str | None = None) -> dict[str, str]:
     now = now or utc_now()
     findings = read_rows(packet / "review_findings.csv")
@@ -273,6 +337,9 @@ def update(packet: Path, ledger_dir: Path, hunt_id: str, now: str | None = None)
     log_rows = [r for r in log_rows if r.get("hunt_id") != hunt_id] + [log_entry]
     write_rows(log_path, RUN_LOG_COLUMNS, log_rows)
     write_quality_report(ledger_dir, queue_rows)
+    new_findings = sync_validated_findings(ledger_dir, queue_rows, hunt_id, now)
+    if new_findings:
+        print(f"ledger: +{new_findings} new row(s) in {FINDINGS_FILE} (PENDING analyst details)")
 
     for message in rejected:
         print(f"ledger: skipped incomplete row: {message}")
