@@ -19,11 +19,11 @@ on:
       window_days:
         description: Look back this many days (every release is listed; a spread-out selection up to the limit is scanned)
         required: true
-        default: "7"
-  # Weekly, Sundays 06:17 UTC (02:17 ET). Each run looks back 7 days, so runs cover every week.
-  # The budget job below keeps Huginn under 500 Actions minutes in any 7 days.
+        default: "15"
+  # Twice a month, 06:17 UTC (02:17 ET) on the 1st and 15th. Each run looks back 15 days, so the
+  # two runs cover the month. The budget job below keeps Huginn under 500 Actions minutes in any 7 days.
   schedule:
-    - cron: "17 6 * * 0"
+    - cron: "17 6 1,15 * *"
 
 permissions:
   contents: read
@@ -148,7 +148,7 @@ jobs:
           LIMIT: ${{ inputs.limit || 'auto' }}
           DEFAULT_LIMIT: ${{ matrix.limit }}
           MAX_MINUTES: ${{ matrix.minutes }}
-          WINDOW_DAYS: ${{ inputs.window_days || '7' }}
+          WINDOW_DAYS: ${{ inputs.window_days || '15' }}
           ECOSYSTEM: ${{ matrix.ecosystem }}
           SCALE: ${{ needs.budget.outputs.scale }}
         run: |
