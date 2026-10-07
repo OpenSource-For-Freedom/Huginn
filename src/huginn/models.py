@@ -41,7 +41,7 @@ class ScanOutcome:
     semgrep: dict[str, Any] = field(default_factory=dict)
     trivy_exit_code: int | None = None
     semgrep_exit_code: int | None = None
-    # Warden package analysis (huginn.malware): the parsed JSON result, and
+    # Malware analysis (huginn.analyzer, huginn.malware): the parsed JSON result, and
     # COMPLETE | FAILED | NOT_CONFIGURED with the error when it failed.
     malware: dict[str, Any] | None = None
     malware_status: str = "NOT_CONFIGURED"
