@@ -29,14 +29,17 @@ permissions:
   contents: read
 
 jobs:
-  # Free-tier guard: refuse to start when this month's minutes plus this run's cap would exceed
-  # the budget (repository variable HUGINN_MONTHLY_MINUTES, default 1900 of the 2,000 free minutes).
+  # Budget guard (GitHub Pro: 3,000 included minutes). If this month's minutes plus this run's cap
+  # would pass the budget (repository variable HUGINN_MONTHLY_MINUTES, default 2900), the run is
+  # scaled down to the minutes left; it is refused only when fewer than 150 remain.
   budget:
     name: Check Actions budget
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       actions: read
+    outputs:
+      scale: ${{ steps.minutes.outputs.scale }}
 
     steps:
       - name: Legion Runner
@@ -46,9 +49,10 @@ jobs:
           file-integrity: auto
 
       - name: Month-to-date minutes
+        id: minutes
         env:
           GH_TOKEN: ${{ github.token }}
-          BUDGET: ${{ vars.HUGINN_MONTHLY_MINUTES || '1900' }}
+          BUDGET: ${{ vars.HUGINN_MONTHLY_MINUTES || '2900' }}
           # The per-registry caps below (790) plus setup and reporting jobs (~30).
           PLANNED: "820"
         # Each job is billed rounded up to the minute. Dependabot (event "dynamic") is not billed.
@@ -89,10 +93,19 @@ jobs:
               page += 1
 
           budget, planned = int(os.environ["BUDGET"]), int(os.environ["PLANNED"])
-          ok = used + planned <= budget
-          lines = [f"Minutes used this month (estimate): {used}", f"Monthly budget: {budget} (remaining {budget - used})",
-                   f"This run is capped at about {planned} minutes",
-                   "Budget check: OK" if ok else "Budget check: REFUSED - this run would exceed the monthly budget"]
+          remaining = budget - used
+          ok = remaining >= 150
+          scale = 1.0 if remaining >= planned else max(0.0, remaining / planned)
+          lines = [f"Minutes used this month (estimate): {used}", f"Monthly budget: {budget} (remaining {remaining})",
+                   f"Full run is capped at about {planned} minutes"]
+          if not ok:
+              lines.append("Budget check: REFUSED - fewer than 150 minutes left this month")
+          elif scale < 1:
+              lines.append(f"Budget check: OK, scaled to {scale:.0%} (about {int(planned * scale)} minutes)")
+          else:
+              lines.append("Budget check: OK")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"scale={scale:.3f}\n")
           print("\n".join(lines))
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
               out.write("### Actions budget\n\n" + "".join(f"- {line}\n" for line in lines))
@@ -111,7 +124,7 @@ jobs:
       matrix:
         # limit = default releases to scan; minutes = hard cap on the capture (about 0.35-0.55 min
         # per package, measured October 2026). One full run stays near 820 Actions minutes, so two
-        # runs a month (about 1,640) fit inside the 2,000 free minutes.
+        # runs a month (about 1,640) leave room in the 3,000 included minutes.
         include:
           - {ecosystem: npm, limit: 400, minutes: 160}
           - {ecosystem: pypi, limit: 400, minutes: 190}
@@ -136,11 +149,20 @@ jobs:
           MAX_MINUTES: ${{ matrix.minutes }}
           WINDOW_DAYS: ${{ inputs.window_days || '15' }}
           ECOSYSTEM: ${{ matrix.ecosystem }}
+          SCALE: ${{ needs.budget.outputs.scale }}
         run: |
           if [ "$LIMIT" = "auto" ]; then LIMIT="$DEFAULT_LIMIT"; fi
           if ! [[ "$LIMIT" =~ ^[0-9]{1,4}$ ]]; then
             echo "::error::limit must be auto or a whole number"; exit 1
           fi
+          if ! [[ "$SCALE" =~ ^[01]\.[0-9]{3}$ ]]; then
+            echo "::error::budget job did not report a scale"; exit 1
+          fi
+          # Shrink the batch and its minute cap to fit what is left of the monthly budget.
+          LIMIT=$(awk -v n="$LIMIT" -v f="$SCALE" 'BEGIN { v = int(n * f); print (v < 10 ? 10 : v) }')
+          MAX_MINUTES=$(awk -v n="$MAX_MINUTES" -v f="$SCALE" 'BEGIN { v = int(n * f); print (v < 10 ? 10 : v) }')
+          echo "$ECOSYSTEM: limit $LIMIT, capped at $MAX_MINUTES minutes"
+          
           gh workflow run cve-capture.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$GITHUB_REF_NAME" \

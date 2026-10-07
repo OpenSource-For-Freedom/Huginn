@@ -55,7 +55,8 @@ class EcosystemMatrixWorkflowTests(unittest.TestCase):
         self.assertIn("needs: budget", dispatcher)
         self.assertIn('event") == "dynamic"', dispatcher)
         self.assertIn("math.ceil(seconds / 60)", dispatcher)
-        self.assertIn("vars.HUGINN_MONTHLY_MINUTES || '1900'", dispatcher)
+        self.assertIn("vars.HUGINN_MONTHLY_MINUTES || '2900'", dispatcher)
+        self.assertIn("needs.budget.outputs.scale", dispatcher)
         self.assertIn('default: "auto"', dispatcher)
 
 if __name__ == "__main__":
