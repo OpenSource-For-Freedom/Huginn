@@ -1,4 +1,4 @@
-# Vendored from git_warden (src/git_warden/scanning/bash_scanner.py @ 05b33492a5e1) by scripts/sync_analyzer.py.
+# Vendored from git_warden (src/git_warden/scanning/bash_scanner.py @ 6dc00399a226) by scripts/sync_analyzer.py.
 # Do not edit here: change it in git_warden and re-sync.
 """Custom bash malware scanner; Layer 1 (static/signature), doc 03.
 
