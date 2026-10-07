@@ -33,7 +33,7 @@ MANIFEST_COLUMNS = [
     "run_id", "registry", "event_type", "package_name", "package_version", "purl", "published_at_utc", "first_seen_at_utc",
     "artifact_filename", "artifact_url", "artifact_sha256", "artifact_size_bytes", "registry_digest", "scan_status",
     "scan_started_at_utc", "scan_finished_at_utc", "trivy_exit_code", "semgrep_exit_code", "finding_count",
-    "failure_stage", "error",
+    "failure_stage", "error", "malware_status", "malware_verdict", "malware_error",
 ]
 
 ALERT_COLUMNS = [

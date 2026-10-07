@@ -26,6 +26,7 @@ class PodmanScanner:
         unpack_image: str = "docker.io/library/python:3.13-slim",
         trivy_cache_volume: str | None = None,
         timeout_seconds: int = 600,
+        warden_image: str | None = None,
     ):
         self.rules_file = rules_file.resolve()
         self.archive_script = archive_script.resolve()
@@ -38,6 +39,8 @@ class PodmanScanner:
             or "huginn-trivy-cache"
         )
         self.timeout_seconds = timeout_seconds
+        # git_warden's sandbox image (malware analysis); None = not configured.
+        self.warden_image = warden_image or os.environ.get("HUGINN_WARDEN_IMAGE") or None
 
     @property
     def ruleset_hash(self) -> str:
@@ -62,7 +65,58 @@ class PodmanScanner:
             "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=128m",
         ]
 
-    def scan(self, artifact_path: Path) -> ScanOutcome:
+    def _unpack_cmd(self, artifact_path: Path, source_volume: str) -> list[str]:
+        return [
+            "podman", "run", "--rm", *self._base_security(),
+            "-v", f"{artifact_path.resolve()}:/input/package:ro,Z",
+            "-v", f"{self.archive_script}:/opt/huginn_archive.py:ro,Z",
+            "-v", f"{source_volume}:/work:rw",
+            self.unpack_image,
+            "python", "/opt/huginn_archive.py", "/input/package", "/work/src",
+        ]
+
+    def _warden(self, source_volume: str, package_name: str, ecosystem: str) -> tuple[dict | None, str, str]:
+        """Run git_warden's package analysis over the unpacked tree (read-only, no network).
+
+        Returns (result, status, error). A failure here never fails the CVE scan.
+        """
+        if not self.warden_image:
+            return None, "NOT_CONFIGURED", ""
+        cmd = [
+            "podman", "run", "--rm", *self._base_security(),
+            "--tmpfs", "/work:rw,noexec,nosuid,nodev,size=1g,mode=1777",
+            "-v", f"{source_volume}:/scan:ro",
+            "--entrypoint", "python",
+            self.warden_image,
+            "-m", "git_warden.package_entry", "/scan/src",
+            "--name", package_name or "unknown", "--ecosystem", ecosystem or "unknown",
+            "--work", "/work",
+        ]
+        try:
+            cp = self._run(cmd)
+            lines = [ln for ln in (cp.stdout or "").splitlines() if ln.strip()]
+            result = json.loads(lines[-1]) if lines else {}
+        except (ScanError, ValueError, subprocess.TimeoutExpired) as exc:
+            return None, "FAILED", f"{type(exc).__name__}: {exc}"[:1000]
+        if not isinstance(result, dict) or result.get("error"):
+            return None, "FAILED", str((result or {}).get("error") or "no result")[:1000]
+        return result, "COMPLETE", ""
+
+    def malware_only(self, artifact_path: Path, *, package_name: str = "",
+                     ecosystem: str = "") -> tuple[dict | None, str, str]:
+        """Unpack and run only the malware analysis (the previous-release comparison)."""
+        if not self.warden_image:
+            return None, "NOT_CONFIGURED", ""
+        source_volume = f"huginn-malware-{uuid.uuid4().hex}"
+        self._run(["podman", "volume", "create", source_volume])
+        try:
+            self._run(self._unpack_cmd(artifact_path, source_volume))
+            return self._warden(source_volume, package_name, ecosystem)
+        finally:
+            subprocess.run(["podman", "volume", "rm", "-f", source_volume],
+                           capture_output=True, text=True, check=False)
+
+    def scan(self, artifact_path: Path, *, package_name: str = "", ecosystem: str = "") -> ScanOutcome:
         if not shutil.which("podman"):
             raise ScanError("podman is required and was not found in PATH")
 
@@ -96,15 +150,7 @@ class PodmanScanner:
             ]
             self._run(seed_cache)
 
-            unpack = [
-                "podman", "run", "--rm", *self._base_security(),
-                "-v", f"{artifact_path.resolve()}:/input/package:ro,Z",
-                "-v", f"{self.archive_script}:/opt/huginn_archive.py:ro,Z",
-                "-v", f"{source_volume}:/work:rw",
-                self.unpack_image,
-                "python", "/opt/huginn_archive.py", "/input/package", "/work/src",
-            ]
-            self._run(unpack)
+            self._run(self._unpack_cmd(artifact_path, source_volume))
 
             trivy_cmd = [
                 "podman", "run", "--rm", *self._base_security(),
@@ -185,11 +231,17 @@ class PodmanScanner:
                     f"analysis errors: {detail or 'none reported'}"
                 )
 
+            malware, malware_status, malware_error = self._warden(
+                source_volume, package_name, ecosystem)
+
             return ScanOutcome(
                 trivy=json.loads(trivy.stdout or "{}"),
                 semgrep=semgrep_payload,
                 trivy_exit_code=trivy.returncode,
                 semgrep_exit_code=semgrep.returncode,
+                malware=malware,
+                malware_status=malware_status,
+                malware_error=malware_error,
             )
         finally:
             subprocess.run(
