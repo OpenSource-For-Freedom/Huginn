@@ -4,7 +4,9 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 import tempfile
+import time
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -66,15 +68,26 @@ def capture_registry(
     started: str,
     max_artifact_bytes: int,
     window_days: int = 0,
+    max_minutes: float = 0,
+    clock=time.monotonic,
 ) -> tuple[list[dict], list[dict]]:
     findings: list[dict] = []
     manifests: list[dict] = []
+    # Budget cap: stop starting new scans once this much time has gone (0 = no cap). Discovery
+    # time counts too, so the whole capture stays inside the minutes it was given.
+    deadline = clock() + max_minutes * 60 if max_minutes > 0 else None
     if window_days > 0:
         batch = discover_window(registry, mode, limit, window_days, state)
     else:
         batch = discover(registry, mode, limit, state)
 
-    for candidate in batch.candidates:
+    for index, candidate in enumerate(batch.candidates):
+        if deadline is not None and clock() >= deadline:
+            print(
+                f"budget: {max_minutes:g} min reached; {len(batch.candidates) - index} selected releases left unscanned",
+                file=sys.stderr,
+            )
+            break
         first_seen = utc_now()
         state.record_discovered(candidate.registry, candidate.name, candidate.version, candidate.event_type, first_seen)
         if state.is_completed(candidate.registry, candidate.name, candidate.version):
@@ -226,6 +239,12 @@ def main() -> None:
         default=0,
         help="List every release from the last N days and scan a spread-out selection (0 = latest feeds only)",
     )
+    parser.add_argument(
+        "--max-minutes",
+        type=float,
+        default=0,
+        help="Stop starting new package scans after this many minutes (0 = no cap)",
+    )
     args = parser.parse_args()
 
     started = utc_now()
@@ -261,6 +280,7 @@ def main() -> None:
                 started,
                 args.max_artifact_bytes,
                 args.window_days,
+                args.max_minutes,
             )
         except Exception as exc:
             all_alerts.append(
@@ -303,6 +323,7 @@ def main() -> None:
         "registry": args.registry,
         "mode": args.mode,
         "window_days": args.window_days,
+        "max_minutes": args.max_minutes,
         "finding_count": len(all_findings),
         "novel_no_match_count": sum(1 for row in all_findings if row.get("dedup_status") == "NO_MATCH"),
         "possible_match_count": sum(1 for row in all_findings if row.get("dedup_status") == "POSSIBLE_MATCH"),

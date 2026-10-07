@@ -13,9 +13,9 @@ on:
         default: all
         options: [all, updates, new]
       limit:
-        description: Maximum releases per ecosystem
+        description: Releases per ecosystem, or auto for the budgeted defaults (go 150, pypi 200, npm 200, crates 100, rubygems 100, packagist 60)
         required: true
-        default: "400"
+        default: "auto"
       window_days:
         description: Look back this many days (every release is listed; a spread-out selection up to the limit is scanned)
         required: true
@@ -25,8 +25,79 @@ permissions:
   contents: read
 
 jobs:
+  # Free-tier guard: refuse to start when this month's minutes plus this run's cap would exceed
+  # the budget (repository variable HUGINN_MONTHLY_MINUTES, default 1900 of the 2,000 free minutes).
+  budget:
+    name: Check Actions budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+
+    steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          file-integrity: auto
+
+      - name: Month-to-date minutes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUDGET: ${{ vars.HUGINN_MONTHLY_MINUTES || '1900' }}
+          # The per-registry caps below (395) plus setup and reporting jobs (~25).
+          PLANNED: "420"
+        # Each job is billed rounded up to the minute. Dependabot (event "dynamic") is not billed.
+        # Counts from the first of the month (UTC); the billing cycle may differ, so it is an estimate.
+        run: |
+          python3 - <<'PY'
+          import json, math, os, sys, urllib.request
+          from datetime import UTC, datetime
+
+          def get(path):
+              req = urllib.request.Request(
+                  f"{os.environ['GITHUB_API_URL']}{path}",
+                  headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                           "Accept": "application/vnd.github+json"})
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  return json.load(resp)
+
+          def ts(value):
+              return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+          now = datetime.now(UTC)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          used, page = 0, 1
+          while True:
+              runs = get(f"/repos/{repo}/actions/runs?created=%3E%3D{now:%Y-%m-01}&per_page=100&page={page}")["workflow_runs"]
+              for run in runs:
+                  if run.get("event") == "dynamic":
+                      continue
+                  for job in get(f"/repos/{repo}/actions/runs/{run['id']}/jobs?filter=all&per_page=100")["jobs"]:
+                      if not job.get("started_at") or job.get("conclusion") == "skipped":
+                          continue
+                      end = ts(job["completed_at"]) if job.get("completed_at") else now
+                      seconds = (end - ts(job["started_at"])).total_seconds()
+                      if seconds > 0:
+                          used += max(1, math.ceil(seconds / 60))
+              if len(runs) < 100:
+                  break
+              page += 1
+
+          budget, planned = int(os.environ["BUDGET"]), int(os.environ["PLANNED"])
+          ok = used + planned <= budget
+          lines = [f"Minutes used this month (estimate): {used}", f"Monthly budget: {budget} (remaining {budget - used})",
+                   f"This run is capped at about {planned} minutes",
+                   "Budget check: OK" if ok else "Budget check: REFUSED - this run would exceed the monthly budget"]
+          print("\n".join(lines))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("### Actions budget\n\n" + "".join(f"- {line}\n" for line in lines))
+          sys.exit(0 if ok else 1)
+          PY
+
   dispatch:
     name: Start ${{ matrix.ecosystem }} hunt
+    needs: budget
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -34,7 +105,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ecosystem: ["npm", "pypi", "rubygems", "crates", "packagist", "go"]
+        # limit = default releases to scan; minutes = hard cap on the capture (about 0.35-0.55 min
+        # per package, measured October 2026), so one full run stays near 420 Actions minutes.
+        include:
+          - {ecosystem: npm, limit: 200, minutes: 80}
+          - {ecosystem: pypi, limit: 200, minutes: 95}
+          - {ecosystem: rubygems, limit: 100, minutes: 45}
+          - {ecosystem: crates, limit: 100, minutes: 50}
+          - {ecosystem: packagist, limit: 60, minutes: 35}
+          - {ecosystem: go, limit: 150, minutes: 90}
 
     steps:
       - name: Legion Runner
@@ -48,10 +127,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MODE: ${{ inputs.mode }}
           LIMIT: ${{ inputs.limit }}
+          DEFAULT_LIMIT: ${{ matrix.limit }}
+          MAX_MINUTES: ${{ matrix.minutes }}
           WINDOW_DAYS: ${{ inputs.window_days }}
           ECOSYSTEM: ${{ matrix.ecosystem }}
         run: |
+          if [ "$LIMIT" = "auto" ]; then LIMIT="$DEFAULT_LIMIT"; fi
+          if ! [[ "$LIMIT" =~ ^[0-9]{1,4}$ ]]; then
+            echo "::error::limit must be auto or a whole number"; exit 1
+          fi
           gh workflow run cve-capture.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$GITHUB_REF_NAME" \
-            -f registry="$ECOSYSTEM" -f mode="$MODE" -f limit="$LIMIT" -f window_days="$WINDOW_DAYS"
+            -f registry="$ECOSYSTEM" -f mode="$MODE" -f limit="$LIMIT" -f window_days="$WINDOW_DAYS" \
+            -f max_minutes="$MAX_MINUTES"

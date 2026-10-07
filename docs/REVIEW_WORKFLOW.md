@@ -157,7 +157,7 @@ The validator rejects incomplete VALIDATED rows and requires a false-positive re
 
 Manual `workflow_dispatch` runs are enabled.
 
-Hunts are manual only (no schedule). Start `hunt-each-registry.yml` ("Huginn Hunt Each Registry") from the Actions tab: by default it looks back 7 days, lists every release each registry published in that window, and scans a selection of up to 400 per registry (new packages first, the rest spread evenly across the week). Packagist only keeps about 24 hours of change history, so its window is capped at that. Set `window_days` to 0 for the old latest-feed behaviour.
+Hunts are manual only (no schedule). Start `hunt-each-registry.yml` ("Huginn Hunt Each Registry") from the Actions tab: by default it looks back 7 days, lists every release each registry published in that window, and scans a budgeted selection per registry (go 150, pypi 200, npm 200, crates 100, rubygems 100, packagist 60; new packages first, the rest spread evenly across the week). Each capture also stops starting new scans after 35-95 minutes, so a full run costs about 420 Actions minutes. Before dispatching, the run checks this month's minutes and refuses to start if it would pass `HUGINN_MONTHLY_MINUTES` (repository variable, default 1900, inside the 2,000 free minutes for private repositories). Packagist only keeps about 24 hours of change history, so its window is capped at that. Set `window_days` to 0 for the old latest-feed behaviour.
 
 The workflow does not submit findings to a CNA, the CVE Program, NVD, a vendor, or a public endpoint.
 

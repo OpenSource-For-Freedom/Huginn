@@ -30,12 +30,13 @@ class EcosystemMatrixWorkflowTests(unittest.TestCase):
 
     def test_hunt_each_registry_dispatches_one_capture_per_ecosystem(self):
         text = Path(".github/workflows/hunt-each-registry.yml").read_text(encoding="utf-8")
-        self.assertIn('["npm", "pypi", "rubygems", "crates", "packagist", "go"]', text)
+        for ecosystem in ("npm", "pypi", "rubygems", "crates", "packagist", "go"):
+            self.assertIn(f"ecosystem: {ecosystem},", text)
         self.assertIn("gh workflow run cve-capture.yml", text)
         self.assertIn('-f registry="$ECOSYSTEM"', text)
         self.assertIn("actions: write", text)
         # Inputs reach the shell through env, never by direct expression interpolation.
-        self.assertNotIn("${{ inputs.mode }}\n", text.split("run: |", 1)[1])
+        self.assertNotIn("${{ inputs.mode }}\n", text.rsplit("run: |", 1)[1])
 
     def test_hunts_are_manual_with_a_seven_day_look_back(self):
         dispatcher = Path(".github/workflows/hunt-each-registry.yml").read_text(encoding="utf-8")
@@ -45,7 +46,16 @@ class EcosystemMatrixWorkflowTests(unittest.TestCase):
         self.assertIn('default: "7"', dispatcher)
         self.assertIn('-f window_days="$WINDOW_DAYS"', dispatcher)
         self.assertIn('--window-days "$WINDOW_DAYS"', capture)
-        self.assertIn("timeout-minutes: 330", capture)
+        self.assertIn("timeout-minutes: 120", capture)
+        self.assertIn('--max-minutes "$MAX_MINUTES"', capture)
+
+    def test_hunts_are_budgeted(self):
+        dispatcher = Path(".github/workflows/hunt-each-registry.yml").read_text(encoding="utf-8")
+        self.assertIn("needs: budget", dispatcher)
+        self.assertIn('event") == "dynamic"', dispatcher)
+        self.assertIn("math.ceil(seconds / 60)", dispatcher)
+        self.assertIn("vars.HUGINN_MONTHLY_MINUTES || '1900'", dispatcher)
+        self.assertIn('default: "auto"', dispatcher)
 
 if __name__ == "__main__":
     unittest.main()
