@@ -13,13 +13,17 @@ on:
         default: all
         options: [all, updates, new]
       limit:
-        description: Releases per ecosystem, or auto for the budgeted defaults (go 150, pypi 200, npm 200, crates 100, rubygems 100, packagist 60)
+        description: Releases per ecosystem, or auto for the budgeted defaults (go 300, pypi 400, npm 400, crates 200, rubygems 200, packagist 120)
         required: true
         default: "auto"
       window_days:
         description: Look back this many days (every release is listed; a spread-out selection up to the limit is scanned)
         required: true
-        default: "7"
+        default: "15"
+  # Twice a month, 06:17 UTC on the 1st and 15th. Each run looks back 15 days, so the two runs
+  # together cover the month. The budget job below still refuses a run that would overspend.
+  schedule:
+    - cron: "17 6 1,15 * *"
 
 permissions:
   contents: read
@@ -45,8 +49,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUDGET: ${{ vars.HUGINN_MONTHLY_MINUTES || '1900' }}
-          # The per-registry caps below (395) plus setup and reporting jobs (~25).
-          PLANNED: "420"
+          # The per-registry caps below (790) plus setup and reporting jobs (~30).
+          PLANNED: "820"
         # Each job is billed rounded up to the minute. Dependabot (event "dynamic") is not billed.
         # Counts from the first of the month (UTC); the billing cycle may differ, so it is an estimate.
         run: |
@@ -106,14 +110,15 @@ jobs:
       fail-fast: false
       matrix:
         # limit = default releases to scan; minutes = hard cap on the capture (about 0.35-0.55 min
-        # per package, measured October 2026), so one full run stays near 420 Actions minutes.
+        # per package, measured October 2026). One full run stays near 820 Actions minutes, so two
+        # runs a month (about 1,640) fit inside the 2,000 free minutes.
         include:
-          - {ecosystem: npm, limit: 200, minutes: 80}
-          - {ecosystem: pypi, limit: 200, minutes: 95}
-          - {ecosystem: rubygems, limit: 100, minutes: 45}
-          - {ecosystem: crates, limit: 100, minutes: 50}
-          - {ecosystem: packagist, limit: 60, minutes: 35}
-          - {ecosystem: go, limit: 150, minutes: 90}
+          - {ecosystem: npm, limit: 400, minutes: 160}
+          - {ecosystem: pypi, limit: 400, minutes: 190}
+          - {ecosystem: rubygems, limit: 200, minutes: 90}
+          - {ecosystem: crates, limit: 200, minutes: 100}
+          - {ecosystem: packagist, limit: 120, minutes: 70}
+          - {ecosystem: go, limit: 300, minutes: 180}
 
     steps:
       - name: Legion Runner
@@ -125,11 +130,11 @@ jobs:
       - name: Dispatch ${{ matrix.ecosystem }} capture
         env:
           GH_TOKEN: ${{ github.token }}
-          MODE: ${{ inputs.mode }}
-          LIMIT: ${{ inputs.limit }}
+          MODE: ${{ inputs.mode || 'all' }}
+          LIMIT: ${{ inputs.limit || 'auto' }}
           DEFAULT_LIMIT: ${{ matrix.limit }}
           MAX_MINUTES: ${{ matrix.minutes }}
-          WINDOW_DAYS: ${{ inputs.window_days }}
+          WINDOW_DAYS: ${{ inputs.window_days || '15' }}
           ECOSYSTEM: ${{ matrix.ecosystem }}
         run: |
           if [ "$LIMIT" = "auto" ]; then LIMIT="$DEFAULT_LIMIT"; fi
