@@ -1,14 +1,15 @@
 {
   "repository": "OpenSource-For-Freedom/git_warden",
-  "commit": "3152fd0cd671881939493802754c7b678ccfe892",
+  "commit": "05b33492a5e1ee6536aff6fb61b8c2a4c2b77423",
   "files": {
-    "bash_scanner.py": "bc1b32a5579eab92e08891bce119ff96099a873a52705cedb379222bc60fdbf4",
-    "content_scanner.py": "ed4e432acfca258dc1dd28ec0be9fa11069452a31d6095b6f0e1e58a71a00f9d",
-    "ioc.py": "c5bbea69d55c7bba381e92858384382a8c532046b396296c64be32c850dfd4f0",
-    "manifest_scanner.py": "8ad79fb54d93114ed199fff3401e366641a7eacabdd36416e305d9dd807d3fb4",
-    "package_spread.py": "f4bcd58b44d7563133c1832571eba27d042685c2c15d6c1f1008f2d92292beb0",
-    "signatures.py": "2e442cba046ffe00fc6bc3d96845b82f15b421bfdeb4fcaf30a6ad246820cb84",
-    "tier2.py": "3c74dc62f3a45d68a0bb4482ec6a80f53861dea449e4fd23deadd752a08f40b2",
-    "yara_rules.py": "7342f09d7c7be9ea3f0903ae1514868cdfcb102a8320029889801d72e7d89f72"
+    "bash_scanner.py": "53ec6c0477a24b26c29d1e71441b704b5b609f843ad611438978a9f26d529fd1",
+    "content_scanner.py": "a6230c9fda9f36d9cc718691ab20accaffb90309604f9a8f954bb26319e2ff57",
+    "egress.py": "dfeb26572cef8e088256ae24ef87c8438ac85d7921f2a9f26b71099b56a7f0c8",
+    "ioc.py": "c002d88d105c0ce99be3d12974220703afea178a5f871948e6c0e61deb593e24",
+    "manifest_scanner.py": "a52d53605339ec103fa6da65e19dbaf4237112b43a334409b147bb19d385dd79",
+    "package_spread.py": "caa5ef81d97eb481e50dbaadb3e11c4f778042bfccdbac2cec514cbe29279cec",
+    "signatures.py": "0e56bf051dd685ac53376a45cd9143a5bd9fc655f74dd23ca4ac34b70e6bda0f",
+    "tier2.py": "e615e751da8c50fcac960bed2a3f3ed5c14ab068c436af0f1fcfb70cc606fcd8",
+    "yara_rules.py": "d7d9bb0ecbb32e0a79a9fba7ed0fdd4743c7edd93992305e70ff223de8b7a2cc"
   }
 }

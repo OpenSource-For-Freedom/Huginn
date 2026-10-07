@@ -21,7 +21,8 @@ from pathlib import Path
 DEST = Path(__file__).resolve().parents[1] / "src" / "huginn" / "analyzer"
 # Everything analyze_repo needs for a package (all standard library).
 FILES = [
-    "scanning/bash_scanner.py", "scanning/content_scanner.py", "scanning/ioc.py",
+    "scanning/bash_scanner.py", "scanning/content_scanner.py", "scanning/egress.py",
+    "scanning/ioc.py",
     "scanning/manifest_scanner.py", "scanning/package_spread.py", "scanning/signatures.py",
     "scanning/tier2.py", "scanning/yara_rules.py",
 ]
