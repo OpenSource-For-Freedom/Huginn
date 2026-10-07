@@ -120,9 +120,7 @@ The default mode scans both first publishes and new versions.
 
 The workflow passes the GitHub Actions token only to the trusted controller for public GHSA queries. The optional `NVD_API_KEY` secret is also controller-only and is never passed into the untrusted package scan container.
 
-The weekly long run (Sunday 06:17 UTC, started by `hunt-each-registry.yml`) remains gated behind:
-
-`HUGINN_SCHEDULE_ENABLED=true`
+Hunts are manual only (no schedule). Start `hunt-each-registry.yml` ("Huginn Hunt Each Registry") from the Actions tab: by default it looks back 7 days, lists every release each registry published in that window, and scans a selection of up to 400 per registry (new packages first, the rest spread evenly across the week). Packagist only keeps about 24 hours of change history, so its window is capped at that. Set `window_days` to 0 for the old latest-feed behaviour.
 
 ## Tests added
 

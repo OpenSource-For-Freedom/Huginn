@@ -157,7 +157,7 @@ The validator rejects incomplete VALIDATED rows and requires a false-positive re
 
 Manual `workflow_dispatch` runs are enabled.
 
-The weekly long run (Sunday 06:17 UTC, `hunt-each-registry.yml`, up to 400 releases per registry) runs only when the private repository variable `HUGINN_SCHEDULE_ENABLED` is exactly `true`.
+Hunts are manual only (no schedule). Start `hunt-each-registry.yml` ("Huginn Hunt Each Registry") from the Actions tab: by default it looks back 7 days, lists every release each registry published in that window, and scans a selection of up to 400 per registry (new packages first, the rest spread evenly across the week). Packagist only keeps about 24 hours of change history, so its window is capped at that. Set `window_days` to 0 for the old latest-feed behaviour.
 
 The workflow does not submit findings to a CNA, the CVE Program, NVD, a vendor, or a public endpoint.
 

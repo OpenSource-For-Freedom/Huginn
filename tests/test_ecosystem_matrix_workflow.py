@@ -37,15 +37,15 @@ class EcosystemMatrixWorkflowTests(unittest.TestCase):
         # Inputs reach the shell through env, never by direct expression interpolation.
         self.assertNotIn("${{ inputs.mode }}\n", text.split("run: |", 1)[1])
 
-    def test_weekly_long_run_is_scheduled_from_the_dispatcher(self):
+    def test_hunts_are_manual_with_a_seven_day_look_back(self):
         dispatcher = Path(".github/workflows/hunt-each-registry.yml").read_text(encoding="utf-8")
         capture = Path(".github/workflows/cve-capture.yml").read_text(encoding="utf-8")
-        self.assertIn('cron: "17 6 * * 0"', dispatcher)
-        self.assertIn("vars.HUGINN_SCHEDULE_ENABLED == 'true'", dispatcher)
-        self.assertIn("inputs.limit || '400'", dispatcher)
+        self.assertNotIn("schedule:", dispatcher)
         self.assertNotIn("schedule:", capture)
+        self.assertIn('default: "7"', dispatcher)
+        self.assertIn('-f window_days="$WINDOW_DAYS"', dispatcher)
+        self.assertIn('--window-days "$WINDOW_DAYS"', capture)
         self.assertIn("timeout-minutes: 330", capture)
-
 
 if __name__ == "__main__":
     unittest.main()

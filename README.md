@@ -24,6 +24,6 @@ It watches npm, PyPI, and RubyGems release activity, downloads published artifac
 - scan_manifest.csv — every package attempted, including scan failures and finding counts.
 - run_summary.json — run-level totals and automation state.
 
-Manual workflow runs are enabled first. The weekly long run (Sunday 06:17 UTC, up to 400 releases per registry, started by `hunt-each-registry.yml`) runs only while the private repository variable HUGINN_SCHEDULE_ENABLED is set to true.
+Hunts are manual only (no schedule). Start `hunt-each-registry.yml` ("Huginn Hunt Each Registry") from the Actions tab: by default it looks back 7 days, lists every release each registry published in that window, and scans a selection of up to 400 per registry (new packages first, the rest spread evenly across the week). Packagist only keeps about 24 hours of change history, so its window is capped at that. Set `window_days` to 0 for the old latest-feed behaviour.
 
 See docs/REVIEW_WORKFLOW.md for the complete CSV inspection contract and validation requirements.

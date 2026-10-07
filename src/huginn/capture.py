@@ -12,6 +12,7 @@ from pathlib import Path
 from .advisory import AdvisoryClient, enrich_rows
 from .alerts import alerts_from_findings, alerts_from_manifests, make_alert
 from .discovery import USER_AGENT, PolicySkip, discover, previous_release, resolve_artifact
+from .window import discover_window
 from .models import Artifact
 from .reporting import ALERT_COLUMNS, MANIFEST_COLUMNS, REVIEW_COLUMNS, normalize_semgrep, normalize_trivy, write_csv
 from .scanner import PodmanScanner
@@ -64,10 +65,14 @@ def capture_registry(
     run: str,
     started: str,
     max_artifact_bytes: int,
+    window_days: int = 0,
 ) -> tuple[list[dict], list[dict]]:
     findings: list[dict] = []
     manifests: list[dict] = []
-    batch = discover(registry, mode, limit, state)
+    if window_days > 0:
+        batch = discover_window(registry, mode, limit, window_days, state)
+    else:
+        batch = discover(registry, mode, limit, state)
 
     for candidate in batch.candidates:
         first_seen = utc_now()
@@ -215,6 +220,12 @@ def main() -> None:
         default=Path(os.environ.get("HUGINN_STATE_DB", "~/.local/state/huginn/state.db")).expanduser(),
     )
     parser.add_argument("--max-artifact-bytes", type=int, default=DEFAULT_MAX_ARTIFACT)
+    parser.add_argument(
+        "--window-days",
+        type=int,
+        default=0,
+        help="List every release from the last N days and scan a spread-out selection (0 = latest feeds only)",
+    )
     args = parser.parse_args()
 
     started = utc_now()
@@ -249,6 +260,7 @@ def main() -> None:
                 run,
                 started,
                 args.max_artifact_bytes,
+                args.window_days,
             )
         except Exception as exc:
             all_alerts.append(
@@ -290,6 +302,7 @@ def main() -> None:
         "finished_at_utc": utc_now(),
         "registry": args.registry,
         "mode": args.mode,
+        "window_days": args.window_days,
         "finding_count": len(all_findings),
         "novel_no_match_count": sum(1 for row in all_findings if row.get("dedup_status") == "NO_MATCH"),
         "possible_match_count": sum(1 for row in all_findings if row.get("dedup_status") == "POSSIBLE_MATCH"),
