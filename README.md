@@ -34,4 +34,6 @@ Hunts run twice a month (06:17 UTC on the 1st and 15th) from `hunt-each-registry
 
 Malware analysis needs a `WARDEN_READ_TOKEN` repository secret (read-only access to the private git_warden repository) so the hunt can build the analyzer image from the pinned `HUGINN_WARDEN_REF`. Without it the hunt still runs and reports `MALWARE_SCAN_NOT_CONFIGURED`.
 
+When a hunt finishes on `Primary`, the aggregate job posts it to Discord through the `DISCORD_WEBHOOK` secret, next to the Warden and Knorr reports: a summary card (packages scanned per registry, CVE review counts, malware verdicts, coverage gaps) and a card per confirmed malicious package. CVE candidates are counts only; their packages stay in the private review packet until disclosure.
+
 See docs/REVIEW_WORKFLOW.md for the complete CSV inspection contract and validation requirements.
