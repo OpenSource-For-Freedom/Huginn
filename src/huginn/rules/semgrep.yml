@@ -826,7 +826,12 @@ rules:
       - patterns:
           - pattern-either:
               - pattern: mysqli_query($C, $Q)
-              - pattern: $DB->query($Q, ...)
+              - patterns:
+                  - pattern: $DB->query($Q, ...)
+                  # `$request->query('x')` is the request accessor (a source), not a SQL call.
+                  - metavariable-regex:
+                      metavariable: $DB
+                      regex: ^(?!\$(?i:request|req)$)
               - pattern: DB::select($Q, ...)
               - pattern: DB::statement($Q, ...)
               - pattern: DB::raw($Q)
@@ -884,21 +889,35 @@ rules:
       - pattern: $R.FormValue(...)
       - pattern: $R.PostFormValue(...)
       - pattern: mux.Vars(...)
-      - pattern: $C.Query(...)
-      - pattern: $C.Param(...)
+      # Framework accessors (gin, echo, fiber) take a single key. Matching any `.Query(...)`
+      # also matched database calls such as pgx `pool.Query(ctx, sql, args...)`.
+      - pattern: $C.Query("...")
+      - pattern: $C.DefaultQuery("...", ...)
+      - pattern: $C.QueryParam("...")
+      - pattern: $C.Param("...")
     pattern-sinks:
       - patterns:
           - pattern-either:
               - pattern: $DB.Query($Q, ...)
               - pattern: $DB.QueryRow($Q, ...)
               - pattern: $DB.Exec($Q, ...)
-              - pattern: $DB.QueryContext($CTX, $Q, ...)
-              - pattern: $DB.ExecContext($CTX, $Q, ...)
           - pattern-not: $DB.Query("...", ...)
           - pattern-not: $DB.QueryRow("...", ...)
           - pattern-not: $DB.Exec("...", ...)
-          - pattern-not: $DB.QueryContext($CTX, "...", ...)
-          - pattern-not: $DB.ExecContext($CTX, "...", ...)
+          - focus-metavariable: $Q
+      # Context-first APIs: database/sql *Context methods, pgx Query/QueryRow/Exec.
+      - patterns:
+          - pattern-either:
+              - pattern: $DB.QueryContext($CTX, $Q, ...)
+              - pattern: $DB.QueryRowContext($CTX, $Q, ...)
+              - pattern: $DB.ExecContext($CTX, $Q, ...)
+              - pattern: $DB.Query($CTX, $Q, ...)
+              - pattern: $DB.QueryRow($CTX, $Q, ...)
+              - pattern: $DB.Exec($CTX, $Q, ...)
+          - metavariable-regex:
+              metavariable: $CTX
+              regex: (?i)^(ctx|.*context.*)$
+          - pattern-not: $DB.$M($CTX, "...", ...)
           - focus-metavariable: $Q
     metadata:
       huginn_category: sql_injection
