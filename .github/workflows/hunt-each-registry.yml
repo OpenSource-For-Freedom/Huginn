@@ -16,12 +16,17 @@ on:
         description: Maximum releases per ecosystem
         required: true
         default: "100"
+  # Weekly long run: Sunday 06:17 UTC (02:17 ET). Enabled by the HUGINN_SCHEDULE_ENABLED
+  # repository variable, which also works as a kill switch.
+  schedule:
+    - cron: "17 6 * * 0"
 
 permissions:
   contents: read
 
 jobs:
   dispatch:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.HUGINN_SCHEDULE_ENABLED == 'true' }}
     name: Start ${{ matrix.ecosystem }} hunt
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -42,8 +47,9 @@ jobs:
       - name: Dispatch ${{ matrix.ecosystem }} capture
         env:
           GH_TOKEN: ${{ github.token }}
-          MODE: ${{ inputs.mode }}
-          LIMIT: ${{ inputs.limit }}
+          # Scheduled runs have no inputs: scan both feeds, up to 400 releases per registry.
+          MODE: ${{ inputs.mode || 'all' }}
+          LIMIT: ${{ inputs.limit || '400' }}
           ECOSYSTEM: ${{ matrix.ecosystem }}
         run: |
           gh workflow run cve-capture.yml \

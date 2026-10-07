@@ -120,7 +120,7 @@ The default mode scans both first publishes and new versions.
 
 The workflow passes the GitHub Actions token only to the trusted controller for public GHSA queries. The optional `NVD_API_KEY` secret is also controller-only and is never passed into the untrusted package scan container.
 
-The hourly schedule remains gated behind:
+The weekly long run (Sunday 06:17 UTC, started by `hunt-each-registry.yml`) remains gated behind:
 
 `HUGINN_SCHEDULE_ENABLED=true`
 

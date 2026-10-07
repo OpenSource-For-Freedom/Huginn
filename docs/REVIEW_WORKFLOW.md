@@ -157,7 +157,7 @@ The validator rejects incomplete VALIDATED rows and requires a false-positive re
 
 Manual `workflow_dispatch` runs are enabled.
 
-The hourly schedule runs only when the private repository variable `HUGINN_SCHEDULE_ENABLED` is exactly `true`.
+The weekly long run (Sunday 06:17 UTC, `hunt-each-registry.yml`, up to 400 releases per registry) runs only when the private repository variable `HUGINN_SCHEDULE_ENABLED` is exactly `true`.
 
 The workflow does not submit findings to a CNA, the CVE Program, NVD, a vendor, or a public endpoint.
 

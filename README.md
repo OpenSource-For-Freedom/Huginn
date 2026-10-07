@@ -24,6 +24,6 @@ It watches npm, PyPI, and RubyGems release activity, downloads published artifac
 - scan_manifest.csv — every package attempted, including scan failures and finding counts.
 - run_summary.json — run-level totals and automation state.
 
-Manual workflow runs are enabled first. The hourly schedule remains gated until the private repository variable HUGINN_SCHEDULE_ENABLED is set to true.
+Manual workflow runs are enabled first. The weekly long run (Sunday 06:17 UTC, up to 400 releases per registry, started by `hunt-each-registry.yml`) runs only while the private repository variable HUGINN_SCHEDULE_ENABLED is set to true.
 
 See docs/REVIEW_WORKFLOW.md for the complete CSV inspection contract and validation requirements.
