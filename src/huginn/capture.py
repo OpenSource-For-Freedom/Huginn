@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .advisory import AdvisoryClient, enrich_rows
 from .alerts import alerts_from_findings, alerts_from_manifests, make_alert
-from .discovery import USER_AGENT, discover, previous_release, resolve_artifact
+from .discovery import USER_AGENT, PolicySkip, discover, previous_release, resolve_artifact
 from .models import Artifact
 from .reporting import ALERT_COLUMNS, MANIFEST_COLUMNS, REVIEW_COLUMNS, normalize_semgrep, normalize_trivy, write_csv
 from .scanner import PodmanScanner
@@ -179,6 +179,13 @@ def capture_registry(
                 manifest["scan_status"] = "COMPLETED"
                 state.mark_completed(candidate.registry, candidate.name, candidate.version, sha256, utc_now())
 
+        except PolicySkip as exc:
+            # Refused by policy before download (e.g. a dist host outside the allow-list). Not a
+            # coverage failure, but still left retryable in state in case the metadata catches up.
+            manifest["scan_status"] = "SKIPPED"
+            manifest["failure_stage"] = stage
+            manifest["error"] = f"{type(exc).__name__}: {exc}"[:4000]
+            state.mark_failed(candidate.registry, candidate.name, candidate.version, manifest["error"])
         except Exception as exc:
             manifest["scan_status"] = "FAILED"
             manifest["failure_stage"] = stage
@@ -302,6 +309,7 @@ def main() -> None:
         ),
         "package_scan_count": len(all_manifests),
         "failed_package_scans": sum(1 for row in all_manifests if row.get("scan_status") == "FAILED"),
+        "skipped_package_scans": sum(1 for row in all_manifests if row.get("scan_status") == "SKIPPED"),
         "operational_alert_count": len(all_alerts),
         "critical_coverage_alert_count": sum(1 for row in all_alerts if row.get("severity") == "CRITICAL"),
         "high_coverage_alert_count": sum(1 for row in all_alerts if row.get("severity") == "HIGH"),

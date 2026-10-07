@@ -96,6 +96,7 @@ def main() -> None:
         "ecosystem_count": len(summaries),
         "package_scan_count": sum(int(s.get("package_scan_count", 0)) for s in summaries),
         "failed_package_scans": sum(int(s.get("failed_package_scans", 0)) for s in summaries),
+        "skipped_package_scans": sum(int(s.get("skipped_package_scans", 0)) for s in summaries),
         "finding_count": sum(int(s.get("finding_count", 0)) for s in summaries),
         "novel_no_match_count": sum(int(s.get("novel_no_match_count", 0)) for s in summaries),
         "possible_match_count": sum(int(s.get("possible_match_count", 0)) for s in summaries),

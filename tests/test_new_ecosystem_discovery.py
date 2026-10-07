@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from huginn.discovery import (
     DiscoveryError,
+    PolicySkip,
     _expand_composer_versions,
     _go_escape,
     _is_go_pseudo_version,
@@ -71,8 +72,15 @@ class PackagistDiscoveryTests(unittest.TestCase):
     def test_dist_on_untrusted_host_is_refused(self):
         payload = {"packages": {"acme/widget": [{"version": "1.0.0", "dist": {"url": "https://evil.example/w.zip"}}]}}
         with patch("huginn.discovery._json", return_value=payload):
-            with self.assertRaises(DiscoveryError):
+            with self.assertRaises(PolicySkip):
                 resolve_artifact(ReleaseCandidate("packagist", "acme/widget", "1.0.0", "NEW_VERSION"))
+
+    def test_missing_version_is_a_policy_skip(self):
+        payload = {"packages": {"acme/widget": [{"version": "1.0.0", "dist": {"url": "https://api.github.com/x"}}]}}
+        with patch("huginn.discovery._json", return_value=payload):
+            with self.assertRaises(PolicySkip) as raised:
+                resolve_artifact(ReleaseCandidate("packagist", "acme/widget", "2.0.0", "NEW_VERSION"))
+        self.assertIsInstance(raised.exception, DiscoveryError)
 
 
 class GoDiscoveryTests(unittest.TestCase):

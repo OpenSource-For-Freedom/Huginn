@@ -36,6 +36,13 @@ class DiscoveryError(RuntimeError):
     pass
 
 
+class PolicySkip(DiscoveryError):
+    """A release Huginn deliberately does not fetch: no matching dist, or a dist host outside the allow-list.
+
+    Capture records these as SKIPPED rather than FAILED, so they do not count as coverage loss.
+    """
+
+
 def _request(url: str, *, accept: str = "application/json", timeout: int = 30) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -459,12 +466,12 @@ def resolve_packagist_artifact(candidate: ReleaseCandidate) -> Artifact:
     match = next((e for e in entries if str(e.get("version")) in wanted
                   or str(e.get("version", "")).lstrip("v") in wanted), None)
     if match is None:
-        raise DiscoveryError(f"packagist has no version {candidate.version} for {candidate.name}")
+        raise PolicySkip(f"packagist has no version {candidate.version} for {candidate.name}")
     dist = match.get("dist") or {}
     url = str(dist.get("url") or "")
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https" or parsed.hostname not in PACKAGIST_DIST_HOSTS:
-        raise DiscoveryError(f"packagist dist host is not allowed: {parsed.hostname}")
+        raise PolicySkip(f"packagist dist host is not allowed: {parsed.hostname}")
     return Artifact(
         filename=f"{package}-{candidate.version}.zip",
         url=url,
