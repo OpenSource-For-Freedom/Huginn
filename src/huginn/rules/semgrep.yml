@@ -267,11 +267,17 @@ rules:
     languages: [javascript, typescript]
     mode: taint
     pattern-sources:
-      - pattern: $REQ.query.$X
-      - pattern: $REQ.body.$X
-      - pattern: $REQ.params.$X
+      # `document.body.innerHTML` would otherwise match `$REQ.body.$X` and taint itself.
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query.$X
+              - pattern: $REQ.body.$X
+              - pattern: $REQ.params.$X
+          - pattern-not: document.$P.$X
     pattern-sinks:
-      - pattern: $EL.innerHTML = $X
+      - patterns:
+          - pattern: $EL.innerHTML = $X
+          - focus-metavariable: $X
       - pattern: document.write(...)
     metadata:
       huginn_category: xss_sink
