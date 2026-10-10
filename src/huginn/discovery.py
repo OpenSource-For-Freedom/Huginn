@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -43,10 +44,31 @@ class PolicySkip(DiscoveryError):
     """
 
 
+def transient(exc: BaseException) -> bool:
+    """A registry error worth retrying: rate limit, server error or a dropped connection."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in (408, 425, 429) or 500 <= exc.code < 600
+    return isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError))
+
+
+def with_retries(fn, *, attempts: int = 3, sleep=time.sleep):
+    """Call fn(), retrying transient registry errors with a short backoff."""
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except Exception as exc:
+            if attempt == attempts - 1 or not transient(exc):
+                raise
+            sleep(min(20.0, 2.0 * (2 ** attempt)))
+    raise RuntimeError("unreachable retry state")
+
+
 def _request(url: str, *, accept: str = "application/json", timeout: int = 30) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+    def fetch() -> bytes:
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    return with_retries(fetch)
 
 
 def _json(url: str) -> dict:
