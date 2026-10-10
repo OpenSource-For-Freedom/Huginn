@@ -1,4 +1,4 @@
-# Vendored from git_warden (src/git_warden/scanning/package_spread.py @ 6dc00399a226) by scripts/sync_analyzer.py.
+# Vendored from git_warden (src/git_warden/scanning/package_spread.py @ d5864ba2a9ed) by scripts/sync_analyzer.py.
 # Do not edit here: change it in git_warden and re-sync.
 """Package-spread analysis: how a found repo propagates a malicious package.
 
