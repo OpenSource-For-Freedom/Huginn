@@ -1,4 +1,4 @@
-# Vendored from git_warden (src/git_warden/scanning/manifest_scanner.py @ 6dc00399a226) by scripts/sync_analyzer.py.
+# Vendored from git_warden (src/git_warden/scanning/manifest_scanner.py @ d5864ba2a9ed) by scripts/sync_analyzer.py.
 # Do not edit here: change it in git_warden and re-sync.
 """Static install-hook / manifest scanner (doc 03 sec 1; PRD GuardDog role).
 

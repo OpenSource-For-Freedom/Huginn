@@ -7,13 +7,15 @@ import os
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
 from .advisory import AdvisoryClient, enrich_rows
 from .alerts import alerts_from_findings, alerts_from_manifests, make_alert
-from .discovery import USER_AGENT, PolicySkip, discover, previous_release, resolve_artifact
+from .discovery import (USER_AGENT, PolicySkip, discover, previous_release, resolve_artifact,
+                        with_retries)
 from .malware import MALWARE_COLUMNS, malware_row, needs_previous, summary_counts
 from .window import discover_window
 from .models import Artifact
@@ -37,7 +39,31 @@ def run_id() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
+class TooLarge(ValueError):
+    """The artifact is over --max-artifact-bytes: a policy limit, not a fault."""
+
+
+def _skip_reason(exc: Exception) -> str | None:
+    """Why a release could not be scanned through no fault of the hunt, or None.
+
+    A version the feed listed but the registry now answers 404/410 for was
+    removed (yanked, or taken down, as malicious releases often are) before
+    Huginn reached it; an over-size artifact is refused by policy. Both are
+    recorded as SKIPPED with the reason, not as coverage failures. Anything
+    else, a sha256 mismatch included, stays FAILED.
+    """
+    if isinstance(exc, urllib.error.HTTPError) and exc.code in (404, 410):
+        return f"RemovedFromRegistry: HTTP {exc.code}"
+    if isinstance(exc, TooLarge):
+        return f"TooLarge: {exc}"
+    return None
+
+
 def download(artifact: Artifact, dest: Path, max_bytes: int) -> tuple[str, int]:
+    return with_retries(lambda: _download_once(artifact, dest, max_bytes))
+
+
+def _download_once(artifact: Artifact, dest: Path, max_bytes: int) -> tuple[str, int]:
     req = urllib.request.Request(artifact.url, headers={"User-Agent": USER_AGENT})
     h = hashlib.sha256()
     total = 0
@@ -48,7 +74,7 @@ def download(artifact: Artifact, dest: Path, max_bytes: int) -> tuple[str, int]:
                 break
             total += len(chunk)
             if total > max_bytes:
-                raise ValueError(f"artifact exceeds configured limit: {total}>{max_bytes}")
+                raise TooLarge(f"artifact exceeds configured limit: {total}>{max_bytes}")
             h.update(chunk)
             out.write(chunk)
     digest = h.hexdigest()
@@ -258,9 +284,10 @@ def capture_registry(
             manifest["error"] = f"{type(exc).__name__}: {exc}"[:4000]
             state.mark_failed(candidate.registry, candidate.name, candidate.version, manifest["error"])
         except Exception as exc:
-            manifest["scan_status"] = "FAILED"
+            reason = _skip_reason(exc)
+            manifest["scan_status"] = "SKIPPED" if reason else "FAILED"
             manifest["failure_stage"] = stage
-            manifest["error"] = f"{type(exc).__name__}: {exc}"[:4000]
+            manifest["error"] = (reason or f"{type(exc).__name__}: {exc}")[:4000]
             state.mark_failed(candidate.registry, candidate.name, candidate.version, manifest["error"])
         finally:
             manifest["scan_finished_at_utc"] = utc_now()

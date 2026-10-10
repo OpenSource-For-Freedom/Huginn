@@ -32,6 +32,25 @@ class AdvisoryResult:
     error: str = ""
 
 
+NVD_HOST = "services.nvd.nist.gov"
+
+
+def _rate_limited(exc: urllib.error.HTTPError, host: str) -> bool:
+    """A 403 that is a rate limit, not a refusal.
+
+    NVD answers an over-limit client with 403. GitHub's secondary rate limit
+    is a 403 with Retry-After (or X-RateLimit-Remaining: 0 for the primary
+    one). Neither was retried, so a burst left advisory lookups at ERROR and
+    raised a HIGH coverage alert per finding.
+    """
+    if exc.code != 403:
+        return False
+    if host == NVD_HOST:
+        return True
+    headers = exc.headers or {}
+    return bool(headers.get("Retry-After")) or headers.get("X-RateLimit-Remaining") == "0"
+
+
 class AdvisoryClient:
     def __init__(
         self,
@@ -52,7 +71,12 @@ class AdvisoryClient:
 
     def _paced(self, host: str) -> None:
         # Conservative unauthenticated pacing; authenticated APIs can tolerate this easily.
-        minimum = 0.65 if host == "services.nvd.nist.gov" and not self.nvd_api_key else 0.10
+        # NVD allows 5 requests per rolling 30 s without a key (50 with one) and
+        # answers anything faster with 403, so keyless calls are spaced 6 s apart.
+        if host == NVD_HOST:
+            minimum = 0.65 if self.nvd_api_key else 6.0
+        else:
+            minimum = 0.10
         previous = self._last_request.get(host, 0.0)
         delay = minimum - (time.monotonic() - previous)
         if delay > 0:
@@ -94,14 +118,17 @@ class AdvisoryClient:
                 with urllib.request.urlopen(req, timeout=self.timeout) as response:
                     return json.loads(response.read())
             except urllib.error.HTTPError as exc:
-                retryable = exc.code == 429 or 500 <= exc.code < 600
+                rate_limited = _rate_limited(exc, parsed.hostname or "")
+                retryable = rate_limited or exc.code == 429 or 500 <= exc.code < 600
                 if not retryable or attempt >= self.retries:
                     raise
-                retry_after = exc.headers.get("Retry-After")
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
                 if retry_after and retry_after.isdigit():
                     delay = min(30.0, float(retry_after))
                 else:
                     delay = min(30.0, (2 ** attempt) + 0.25 * (attempt + 1))
+                if rate_limited and parsed.hostname == NVD_HOST:
+                    delay = max(delay, 6.5)   # NVD's window is 30 s; one slot frees every 6 s
                 time.sleep(delay)
             except urllib.error.URLError:
                 if attempt >= self.retries:

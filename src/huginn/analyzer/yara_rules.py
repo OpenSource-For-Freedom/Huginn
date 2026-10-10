@@ -1,4 +1,4 @@
-# Vendored from git_warden (src/git_warden/scanning/yara_rules.py @ 6dc00399a226) by scripts/sync_analyzer.py.
+# Vendored from git_warden (src/git_warden/scanning/yara_rules.py @ d5864ba2a9ed) by scripts/sync_analyzer.py.
 # Do not edit here: change it in git_warden and re-sync.
 """YARA rulesets for the Tier-2 ``yara`` scanner.
 
@@ -40,7 +40,7 @@ rule polinrider_payload {
         any of ($marker_*) or
         ($global_bang and ($seed1_v1 or $varname_v1)) or
         ($global_V    and ($seed1_v2 or $varname_v2)) or
-        ($global_r and $global_m and (any of ($seed1_*)))
+        ($global_r and $global_m and (any of ($seed*)))
 }
 """
 
