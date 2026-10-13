@@ -308,10 +308,16 @@ def _npm_change_time(seq: int) -> datetime | None:
     return sorted(stamps)[len(stamps) // 2]
 
 
-def npm_window(cutoff: datetime, limit: int, state: StateDB, change_time: Callable[[int], datetime | None] = _npm_change_time) -> list[ReleaseCandidate]:
+def npm_head() -> int:
     head = int(str(_get_json(f"{d.NPM_REPLICA}/").get("update_seq") or "0"))
     if not head:
         raise d.DiscoveryError("npm replication endpoint did not return update_seq")
+    return head
+
+
+def npm_seq_at(cutoff: datetime, head: int,
+               change_time: Callable[[int], datetime | None] = _npm_change_time) -> int:
+    """A change sequence at or just before `cutoff` (within about 2000 changes)."""
     # Step back from the head until a probe lands before the cutoff, then binary-search.
     hi, back = head, 10_000
     lo = max(0, head - back)
@@ -328,6 +334,12 @@ def npm_window(cutoff: datetime, limit: int, state: StateDB, change_time: Callab
             hi = mid
         else:
             lo = mid
+    return lo
+
+
+def npm_window(cutoff: datetime, limit: int, state: StateDB, change_time: Callable[[int], datetime | None] = _npm_change_time) -> list[ReleaseCandidate]:
+    head = npm_head()
+    lo = npm_seq_at(cutoff, head, change_time)
     # Sample the window evenly: a short page of changes at each of `limit` points.
     probes = max(1, limit)
     step = max(1, (head - lo) // probes)
