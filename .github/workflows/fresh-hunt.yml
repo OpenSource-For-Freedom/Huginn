@@ -4,26 +4,32 @@ run-name: "Huginn fresh hunt"
 # Every new npm and PyPI package since the last run, ranked by metadata risk, the riskiest
 # few malware-scanned (analyzer only, no CVE scanners) within hours of publication, before
 # registries take malicious packages down. Each run also reports recall against OSV's
-# MAL- advisories. Roughly 15 Actions minutes a run.
+# MAL- advisories. Roughly 10 Actions minutes a run, twice a day (~600 a month). Skipped
+# when the 7-day budget (HUGINN_WEEKLY_MINUTES, shared with the window hunts) is spent.
 on:
   schedule:
-    - cron: "23 */8 * * *"
+    - cron: "23 */12 * * *"
   workflow_dispatch:
     inputs:
       hours:
         description: Look-back on the first run (later runs continue from the saved cursor)
         required: false
-        default: "8"
+        default: "12"
       top:
         description: Packages malware-scanned per registry
         required: false
-        default: "12"
+        default: "8"
       discord:
         description: Post to Discord
         required: false
         type: choice
         default: findings
         options: [findings, always, never]
+      ignore_budget:
+        description: Run even when the 7-day Actions budget is spent
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,10 +43,39 @@ env:
   HUGINN_FRESH_STATE_DB: ${{ github.workspace }}/.huginn-state/fresh.db
 
 jobs:
+  budget:
+    name: Check Actions budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      ok: ${{ steps.budget.outputs.ok }}
+
+    steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          file-integrity: auto
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Minutes left this week
+        id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUDGET: ${{ vars.HUGINN_WEEKLY_MINUTES || '500' }}
+          IGNORE_BUDGET: ${{ inputs.ignore_budget && 'true' || 'false' }}
+        run: python3 scripts/actions_budget.py --planned 15
+
   fresh:
     name: Fresh npm + PyPI hunt
+    needs: budget
+    if: needs.budget.outputs.ok == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Legion Runner
@@ -104,8 +139,8 @@ jobs:
         shell: bash
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          HOURS: ${{ inputs.hours || '8' }}
-          TOP: ${{ inputs.top || vars.HUGINN_FRESH_TOP || '12' }}
+          HOURS: ${{ inputs.hours || '12' }}
+          TOP: ${{ inputs.top || vars.HUGINN_FRESH_TOP || '8' }}
           DISCORD_MODE: ${{ inputs.discord || 'findings' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -114,7 +149,7 @@ jobs:
           [[ "$TOP" =~ ^[0-9]{1,3}$ ]] || { echo "::error::top must be 0-999"; exit 1; }
           out="reports/fresh/$(date -u +%Y%m%dT%H%M%SZ)"
           python -m huginn.fresh --registries npm,pypi --hours "$HOURS" --top "$TOP" \
-            --max-minutes 25 --out "$out" --discord "$DISCORD_MODE" --run-url "$RUN_URL"
+            --max-minutes 15 --out "$out" --discord "$DISCORD_MODE" --run-url "$RUN_URL"
           echo "output_dir=$out" >> "$GITHUB_OUTPUT"
           python - "$out/fresh_summary.json" <<'PY'
           import json, sys

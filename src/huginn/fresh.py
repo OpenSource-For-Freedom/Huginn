@@ -12,7 +12,7 @@ down. This hunt runs every few hours instead:
 4. measure recall against OSV's MAL- advisories (huginn.recall), so every run says
    how much known malware it caught, ranked too low, reached too late or never saw.
 
-    python -m huginn.fresh --registries npm,pypi --hours 8 --top 12 --out reports/fresh/RUN
+    python -m huginn.fresh --registries npm,pypi --hours 12 --top 8 --out reports/fresh/RUN
 """
 
 from __future__ import annotations
@@ -264,9 +264,9 @@ def discord_messages(summaries: list[dict], recalls: dict[str, dict], rows: list
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--registries", default="npm,pypi")
-    ap.add_argument("--hours", type=float, default=8.0, help="look back this far on the first run")
-    ap.add_argument("--top", type=int, default=12, help="packages scanned per registry")
-    ap.add_argument("--max-minutes", type=float, default=30.0)
+    ap.add_argument("--hours", type=float, default=12.0, help="look back this far on the first run")
+    ap.add_argument("--top", type=int, default=8, help="packages scanned per registry")
+    ap.add_argument("--max-minutes", type=float, default=15.0)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--state", type=Path, default=Path(os.environ.get(
         "HUGINN_FRESH_STATE_DB", ".huginn-state/fresh.db")))
