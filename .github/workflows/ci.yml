@@ -4,8 +4,7 @@ on:
   pull_request:
     branches: [Primary]
   push:
-    branches:
-      - "feature/**"
+    branches: [Primary]
 
 permissions:
   contents: read
