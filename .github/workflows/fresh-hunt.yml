@@ -1,0 +1,186 @@
+name: Huginn Fresh Malware Hunt
+run-name: "Huginn fresh hunt"
+
+# Every new npm and PyPI package since the last run, ranked by metadata risk, the riskiest
+# few malware-scanned (analyzer only, no CVE scanners) within hours of publication, before
+# registries take malicious packages down. Each run also reports recall against OSV's
+# MAL- advisories. Roughly 10 Actions minutes a run, twice a day (~600 a month). Skipped
+# when the 7-day budget (HUGINN_WEEKLY_MINUTES, shared with the window hunts) is spent.
+on:
+  schedule:
+    - cron: "23 */12 * * *"
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: Look-back on the first run (later runs continue from the saved cursor)
+        required: false
+        default: "12"
+      top:
+        description: Packages malware-scanned per registry
+        required: false
+        default: "8"
+      discord:
+        description: Post to Discord
+        required: false
+        type: choice
+        default: findings
+        options: [findings, always, never]
+      ignore_budget:
+        description: Run even when the 7-day Actions budget is spent
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: huginn-fresh-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  HUGINN_UNPACK_IMAGE: docker.io/library/python:3.13-slim
+  HUGINN_FRESH_STATE_DB: ${{ github.workspace }}/.huginn-state/fresh.db
+
+jobs:
+  budget:
+    name: Check Actions budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      ok: ${{ steps.budget.outputs.ok }}
+
+    steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          file-integrity: auto
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Minutes left this week
+        id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUDGET: ${{ vars.HUGINN_WEEKLY_MINUTES || '500' }}
+          IGNORE_BUDGET: ${{ inputs.ignore_budget && 'true' || 'false' }}
+        run: python3 scripts/actions_budget.py --planned 15
+
+  fresh:
+    name: Fresh npm + PyPI hunt
+    needs: budget
+    if: needs.budget.outputs.ok == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Legion Runner
+        uses: Wraith-security/legion_runner@b459e7433723418301974a1f05098607b7e8d027
+        with:
+          egress-policy: audit
+          file-integrity: auto
+          ebpf: auto
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Restore fresh-hunt state
+        uses: actions/cache/restore@v4
+        with:
+          path: .huginn-state
+          key: huginn-fresh-state-${{ github.run_id }}
+          restore-keys: |
+            huginn-fresh-state-
+
+      - name: Install Huginn
+        run: python -m pip install .
+
+      - name: Build malware analyzer
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman pull "$HUGINN_UNPACK_IMAGE"
+          image="localhost/huginn-analyzer:${GITHUB_SHA:0:12}"
+          podman build -q -f containers/analyzer.Containerfile -t "$image" .
+          # Smoke: an empty tree is clean and a known payload is confirmed, offline,
+          # read-only and without capabilities. A broken analyzer must not report "clean".
+          smoke="$RUNNER_TEMP/analyzer-smoke"
+          mkdir -p "$smoke/clean/src" "$smoke/evil/src/package"
+          printf '%s\n' "global['_V']='8-st1';var MDy=0;" > "$smoke/evil/src/package/index.js"
+          for case in clean evil; do
+            podman run --rm --network none --read-only --cap-drop ALL \
+              --tmpfs /work:rw,noexec,nosuid,nodev,size=64m,mode=1777 --tmpfs /tmp:rw,size=64m \
+              -v "$smoke/$case:/scan:ro,Z" "$image" /scan/src --name smoke --ecosystem npm --work /work \
+              > "$smoke/$case.json"
+          done
+          python - "$smoke" <<'PY'
+          import json, sys
+          root = sys.argv[1]
+          clean = json.load(open(f"{root}/clean.json"))
+          evil = json.load(open(f"{root}/evil.json"))
+          assert clean["confirmed"] is False, clean
+          assert evil["confirmed"] is True, evil
+          print("analyzer smoke: clean tree clean, known payload confirmed;",
+                "yara", evil["scanners"].get("yara"))
+          PY
+          echo "HUGINN_ANALYZER_IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Hunt
+        id: hunt
+        shell: bash
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          HOURS: ${{ inputs.hours || '12' }}
+          TOP: ${{ inputs.top || vars.HUGINN_FRESH_TOP || '8' }}
+          DISCORD_MODE: ${{ inputs.discord || 'findings' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$HOURS" =~ ^[0-9]{1,2}$ ]] || { echo "::error::hours must be 0-99"; exit 1; }
+          [[ "$TOP" =~ ^[0-9]{1,3}$ ]] || { echo "::error::top must be 0-999"; exit 1; }
+          out="reports/fresh/$(date -u +%Y%m%dT%H%M%SZ)"
+          python -m huginn.fresh --registries npm,pypi --hours "$HOURS" --top "$TOP" \
+            --max-minutes 15 --out "$out" --discord "$DISCORD_MODE" --run-url "$RUN_URL"
+          echo "output_dir=$out" >> "$GITHUB_OUTPUT"
+          python - "$out/fresh_summary.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("### Fresh malware hunt\n\n")
+              for s in data["registries"]:
+                  line = (f"- **{s['registry']}**: {s['new_packages']} new, {s['scanned']} scanned, "
+                          f"{s['confirmed']} confirmed, {s['suspicious']} suspicious, "
+                          f"{s['removed_or_skipped']} already removed")
+                  print(line); out.write(line + "\n")
+              for registry, r in data["recall"].items():
+                  line = (f"- **{registry} recall** (OSV MAL-): {r.get('known_malicious', 0)} known, "
+                          f"{r.get('flagged', 0)} flagged, {r.get('scanned_clean', 0)} scanned clean, "
+                          f"{r.get('not_selected', 0)} ranked out, {r.get('unscannable', 0)} removed first, "
+                          f"{r.get('not_seen', 0)} not seen")
+                  print(line); out.write(line + "\n")
+          PY
+
+      - name: Upload fresh-hunt packet
+        if: always() && steps.hunt.outputs.output_dir != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: huginn-fresh-${{ github.run_id }}
+          path: ${{ steps.hunt.outputs.output_dir }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Save fresh-hunt state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .huginn-state
+          key: huginn-fresh-state-${{ github.run_id }}
