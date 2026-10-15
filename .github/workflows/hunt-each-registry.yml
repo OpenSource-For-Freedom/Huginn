@@ -4,6 +4,7 @@ name: Huginn Hunt Each Registry
 # concurrency queue, its own capture and aggregate jobs, and its own ledger commit, so a
 # slow or failing registry no longer holds up or reddens the others.
 on:
+  # Manual only: run it from the Actions tab (Run workflow). No push, PR or schedule triggers.
   workflow_dispatch:
     inputs:
       mode:
@@ -25,10 +26,6 @@ on:
         required: false
         type: boolean
         default: false
-  # Twice a month, 06:17 UTC (02:17 ET) on the 1st and 15th. Each run looks back 15 days, so the
-  # two runs cover the month. The budget job below keeps Huginn under 500 Actions minutes in any 7 days.
-  schedule:
-    - cron: "17 6 1,15 * *"
 
 permissions:
   contents: read

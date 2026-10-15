@@ -38,10 +38,11 @@ class EcosystemMatrixWorkflowTests(unittest.TestCase):
         # Inputs reach the shell through env, never by direct expression interpolation.
         self.assertNotIn("${{ inputs.mode }}\n", text.rsplit("run: |", 1)[1])
 
-    def test_hunts_run_twice_a_month_with_a_fifteen_day_look_back(self):
+    def test_hunts_are_manual_only_with_a_fifteen_day_look_back(self):
         dispatcher = Path(".github/workflows/hunt-each-registry.yml").read_text(encoding="utf-8")
         capture = Path(".github/workflows/cve-capture.yml").read_text(encoding="utf-8")
-        self.assertIn('cron: "17 6 1,15 * *"', dispatcher)
+        # Nothing hunts on its own: both run only from a manual dispatch.
+        self.assertNotIn("schedule:", dispatcher)
         self.assertNotIn("schedule:", capture)
         self.assertIn('default: "15"', dispatcher)
         self.assertIn("inputs.window_days || '15'", dispatcher)
