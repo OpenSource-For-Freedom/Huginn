@@ -4,11 +4,17 @@ run-name: "Huginn fresh hunt"
 # Every new npm and PyPI package since the last run, ranked by metadata risk, the riskiest
 # few malware-scanned (analyzer only, no CVE scanners) within hours of publication, before
 # registries take malicious packages down. Each run also reports recall against OSV's
-# MAL- advisories. Roughly 10 Actions minutes a run, twice a day (~600 a month). Skipped
-# when the 7-day budget (HUGINN_WEEKLY_MINUTES, shared with the window hunts) is spent.
+# MAL- advisories. Roughly 10 Actions minutes a run.
+#
+# Manual only (owner, 2026-10-18). It ran on "23 */12 * * *": twice a day at about ten
+# Actions minutes a run, which its own note put at ~600 minutes a month and which measured
+# as the largest single line on the account. Every scheduled run from 2026-10-16 to
+# 2026-10-18 also FAILED, so the schedule was buying nothing but minutes. The hunt still
+# works and is still worth running; it is run deliberately now.
+#
+# The 7-day budget guard (HUGINN_WEEKLY_MINUTES, shared with the window hunts) stays. A
+# manual trigger is not a reason to let one afternoon spend the week.
 on:
-  schedule:
-    - cron: "23 */12 * * *"
   workflow_dispatch:
     inputs:
       hours:
