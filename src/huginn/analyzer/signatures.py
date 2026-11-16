@@ -1,4 +1,4 @@
-# Vendored from git_warden (src/git_warden/scanning/signatures.py @ d5864ba2a9ed) by scripts/sync_analyzer.py.
+# Vendored from git_warden (src/git_warden/scanning/signatures.py @ 4f5a909685f7) by scripts/sync_analyzer.py.
 # Do not edit here: change it in git_warden and re-sync.
 """Malware code-signature discovery (the novel-repo engine).
 

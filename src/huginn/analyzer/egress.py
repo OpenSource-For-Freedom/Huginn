@@ -1,4 +1,4 @@
-# Vendored from git_warden (src/git_warden/scanning/egress.py @ d5864ba2a9ed) by scripts/sync_analyzer.py.
+# Vendored from git_warden (src/git_warden/scanning/egress.py @ 4f5a909685f7) by scripts/sync_analyzer.py.
 # Do not edit here: change it in git_warden and re-sync.
 """The egress schema: no outbound channel, no malicious action.
 
