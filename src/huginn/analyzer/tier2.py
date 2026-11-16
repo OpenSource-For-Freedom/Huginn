@@ -1,4 +1,4 @@
-# Vendored from git_warden (src/git_warden/scanning/tier2.py @ d5864ba2a9ed) by scripts/sync_analyzer.py.
+# Vendored from git_warden (src/git_warden/scanning/tier2.py @ 4f5a909685f7) by scripts/sync_analyzer.py.
 # Do not edit here: change it in git_warden and re-sync.
 """Tier-2: clone a candidate repo and run deep analysis (doc 02 section 3.2).
 
